@@ -79,16 +79,27 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 - `!stop` (owner only) kills the running job.
 - Invite to a channel with `/invite @Loki` — the owner gets a DM heads-up when it joins.
 
-## Extending Loki
+## Extending Loki — it runs your whole Claude Code
 
-Loki's brain is your **full Claude Code**, so it can run any skill, subagent, or slash command installed under `~/.claude` — not just answer questions.
+Loki isn't limited to chat. Its brain is the **full `claude` CLI**, so it can run **any skill, subagent, or slash command in `~/.claude`** — the ones you've built *and* open-source ones you install. Two ways to drive them:
 
-- **Just ask** (owner · write mode): *"run my X skill on Y"* — any installed skill works, like in a terminal.
-- **Wire a fixed `!command`** for heavy, repeatable pipelines that stream progress back while they run for minutes or hours.
+- **Just ask** (owner · write mode) — *"run my release-notes skill for the last 10 commits"*. Any installed skill fires, exactly like in a terminal.
+- **Wire a one-tap `!command`** — for heavy, multi-agent pipelines that run for minutes or hours and stream progress back to the thread.
 
-For example, you can install an open-source Claude Code pipeline like the [AI_GAME_QA_TestCase](https://github.com/nobles92ts-ship-it/AI_GAME_QA_TestCase) QA test-case generator into `~/.claude` and trigger it through Loki — or activate skills you already have, on demand.
+### Showcase: drive a whole QA pipeline from Slack
 
-→ Worked example + code sketch: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
+[**AI_GAME_QA_TestCase**](https://github.com/nobles92ts-ship-it/AI_GAME_QA_TestCase) — an open-source, multi-agent Claude Code pipeline (by Loki's author) that turns a **spec doc + a spreadsheet** into a full test-case suite (analyze → design → write → review → fix). Drop it into `~/.claude` and Loki becomes its remote control — kick off an hours-long run from your phone and watch it stream:
+
+```
+you  → !qa  <spreadsheet-url>  <spec-url>
+Loki → 🚀 started — I'll stream progress…
+Loki → ▶ [agent] writing test cases for feature X…
+Loki → ✅ done — check the sheet.
+```
+
+That's the whole pitch: **install any Claude Code skill — yours or the community's — and Loki is its remote control.**
+
+→ Full worked example + code sketch: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
 
 ## Security model
 
