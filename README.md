@@ -79,6 +79,17 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 - `!stop` (owner only) kills the running job.
 - Invite to a channel with `/invite @Loki` — the owner gets a DM heads-up when it joins.
 
+## Extending Loki
+
+Loki's brain is your **full Claude Code**, so it can run any skill, subagent, or slash command installed under `~/.claude` — not just answer questions.
+
+- **Just ask** (owner · write mode): *"run my X skill on Y"* — any installed skill works, like in a terminal.
+- **Wire a fixed `!command`** for heavy, repeatable pipelines that stream progress back while they run for minutes or hours.
+
+For example, you can install an open-source Claude Code pipeline like the [AI_GAME_QA_TestCase](https://github.com/nobles92ts-ship-it/AI_GAME_QA_TestCase) QA test-case generator into `~/.claude` and trigger it through Loki — or activate skills you already have, on demand.
+
+→ Worked example + code sketch: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
+
 ## Security model
 
 - **Read-only by default.** Every Claude call is forced to `--permission-mode plan` unless you opt in. A boot self-test verifies plan mode cannot write — if that guarantee ever breaks, Loki refuses to start.

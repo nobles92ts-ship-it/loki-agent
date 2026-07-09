@@ -79,6 +79,17 @@ cd loki-agent
 - `!stop` / `중지` (오너 전용) — 실행 중 작업 강제 중단.
 - 채널 초대는 `/invite @Loki` — 봇이 들어가면 오너 DM으로 알림.
 
+## Loki 확장하기
+
+Loki의 두뇌는 **네 Claude Code 전체**라서, `~/.claude`에 설치된 스킬·서브에이전트·슬래시 커맨드를 다 부를 수 있어 — 단순 Q&A가 아니야.
+
+- **그냥 요청** (오너 · 쓰기 모드): *"내 X 스킬로 Y 해줘"* — 설치된 스킬이면 터미널에서처럼 그대로 발동.
+- **고정 `!명령` 배선**: 자주 돌리는 무거운 파이프라인을 원탭으로 + 실행 중 진행상황 스트리밍.
+
+예를 들어 [AI_GAME_QA_TestCase](https://github.com/nobles92ts-ship-it/AI_GAME_QA_TestCase) 같은 오픈소스 Claude Code 파이프라인(QA 테스트케이스 생성기)을 `~/.claude`에 설치해 Loki로 부를 수도 있고 — 이미 가진 스킬을 요청 시 발동시킬 수도 있어.
+
+→ 실전 예시 + 코드 스케치: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
+
 ## 보안 모델
 
 - **기본 읽기전용.** 모든 Claude 호출은 opt-in 전까지 `--permission-mode plan` 강제. 부팅 자가테스트가 plan의 쓰기 불가를 검증 — 깨지면 기동 거부.
