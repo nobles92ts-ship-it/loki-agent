@@ -1,0 +1,55 @@
+display_information:
+  name: Loki
+  description: Personal local agent — your Claude Code, on Slack (runs on your PC)
+  long_description: |
+    *How to use Loki*
+
+    Loki runs on its owner's PC and executes Claude Code on their behalf.
+
+    *1. DM (owner only)*
+    DM Loki and it works with the owner's configured permission level
+    (up to full read/write/execute on that PC).
+
+    *2. @Loki mention in a channel (anyone)*
+    Anyone in a channel Loki has joined can call `@Loki <question>`.
+    Guest calls are always *read-only* — no file changes, no command
+    execution. Ask for lookups, summaries, explanations.
+    Example: `@Loki summarize this channel since last Monday`
+
+    *3. Reply in a thread*
+    Replying in the same thread keeps the conversation context.
+    Start a fresh mention for a new topic.
+
+    *4. Notes*
+    - Replies usually take 15–30s; complex asks can take 1–2+ minutes.
+    - All requests share the owner's Claude subscription limits — be considerate.
+  background_color: "#1d1f2b"
+features:
+  bot_user:
+    display_name: Loki
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:history
+      - im:read
+      - im:write
+      - reactions:write
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - groups:history
+      - groups:read
+      - users:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.im
+      - app_mention
+      - member_joined_channel
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

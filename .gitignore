@@ -1,0 +1,10 @@
+# secrets & local runtime — never commit
+.env
+state/
+venv/
+__pycache__/
+*.pyc
+*.bak
+*.bak_*
+*~
+*.orig
