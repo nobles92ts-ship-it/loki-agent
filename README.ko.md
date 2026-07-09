@@ -109,6 +109,10 @@ cd loki-agent
 
 플랫폼 추가 기여: [docs/PLATFORMS.md](docs/PLATFORMS.md)부터.
 
+## 피드백 & 이슈
+
+아직 초기 단계다 — **많이 써보고 이슈를 편하게 올려달라**: 셋업이 막히는 지점, 헷갈리는 문서, 플랫폼별 이상 동작, 보안 우려, 있었으면 하는 기능까지 전부 환영. "SETUP.md 이 한 문장이 헷갈렸다" 같은 것도 도움이 된다. 버그면 [이슈 등록](../../issues/new), 그 외(아이디어, 사용법 질문, 새 플랫폼 어댑터 작업 중)는 [디스커션](../../discussions)으로.
+
 ## 라이선스
 
 [MIT](LICENSE) · English docs: [README.md](README.md)

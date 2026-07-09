@@ -109,6 +109,10 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 
 Want to add a platform? Start at [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
+## Feedback & issues
+
+This is early — please use it hard and **file issues generously**: broken setup steps, confusing docs, a platform quirk, a security concern, a feature you wish existed. Even "this one sentence in SETUP.md confused me" is useful. [Open an issue](../../issues/new) or start a [discussion](../../discussions) for anything less bug-shaped (ideas, "how do I…", a new platform adapter you're building).
+
 ## License
 
 [MIT](LICENSE) · 한국어 문서: [README.ko.md](README.ko.md)
