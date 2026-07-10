@@ -64,9 +64,32 @@ MSG: dict[str, dict[str, str]] = {
         "empty": "(empty response)",
         "exit_code": "(claude exit code {rc})",
         "fresh_restart": "_(restarted with a fresh context)_\n\n",
-        "stopped": "🛑 Stopped the running job.",
+        "stopped_n": "🛑 Stopped {n} job(s).",
         "nothing_running": "Nothing is running.",
         "queued": "⏳ Queued ({n} ahead)…",
+        "jobs_none": "No jobs running or queued.",
+        "jobs_header": "🧵 Jobs — {r} running · {q} queued",
+        "cancel_killed": "🛑 {id} killed.",
+        "cancel_dequeued": "🗑️ {id} removed from the queue.",
+        "cancel_retry": "{id} is just starting — try again in a moment.",
+        "cancel_not_found": "{id}? No such job — check `!jobs`.",
+        "usage_empty": "No usage recorded yet.",
+        "usage_header": "📊 Usage — last {d}d: {n} calls ({ok} ok · {fail} failed) · {dur}",
+        "usage_today": "Today: {n} calls · {dur}",
+        "usage_by_user": "By user: {s}",
+        "usage_by_kind": "By kind: {s}",
+        "sched_added": "⏰ Scheduled {id} — {spec}\nNext run: {next}",
+        "sched_removed": "🗑️ Removed {id}.",
+        "sched_not_found": "{id}? No such schedule — check `!schedule list`.",
+        "sched_empty": "No schedules yet. Try `!schedule daily 09:00 <prompt>`",
+        "sched_list_header": "⏰ Schedules:",
+        "sched_fired": "⏰ {id} ({spec}):\n",
+        "sched_help": ("Usage:\n"
+                       "• `!schedule daily HH:MM <prompt>`\n"
+                       "• `!schedule weekly mon..sun HH:MM <prompt>`\n"
+                       "• `!schedule once YYYY-MM-DD HH:MM <prompt>`\n"
+                       "• `!schedule list` · `!schedule remove s1`"),
+        "learn_saved": "🧠 Noted — {n} item(s) in the learnings inbox (state/learnings.md).",
         "invited": ("📥 Invited to a new channel: #{name}\n"
                     "By default anyone there can query me — read-only, and only "
                     "within the paths you shared in loki.md.\n"
@@ -108,9 +131,32 @@ MSG: dict[str, dict[str, str]] = {
         "empty": "(빈 응답)",
         "exit_code": "(claude 종료코드 {rc})",
         "fresh_restart": "_(새 컨텍스트로 다시 시작)_\n\n",
-        "stopped": "🛑 실행 중이던 작업을 중단했어.",
+        "stopped_n": "🛑 작업 {n}개 중단했어.",
         "nothing_running": "실행 중인 작업이 없어.",
         "queued": "⏳ 대기 중 ({n}개 앞에 있음)…",
+        "jobs_none": "실행·대기 중인 작업이 없어.",
+        "jobs_header": "🧵 작업 — 실행 {r} · 대기 {q}",
+        "cancel_killed": "🛑 {id} 중단했어.",
+        "cancel_dequeued": "🗑️ {id} 대기열에서 뺐어.",
+        "cancel_retry": "{id}는 막 시작하는 중이야 — 잠시 후 다시 시도해줘.",
+        "cancel_not_found": "{id}? 그런 작업 없어 — `!jobs`로 확인해줘.",
+        "usage_empty": "아직 기록된 사용량이 없어.",
+        "usage_header": "📊 사용량 — 최근 {d}일: {n}회 (성공 {ok} · 실패 {fail}) · {dur}",
+        "usage_today": "오늘: {n}회 · {dur}",
+        "usage_by_user": "유저별: {s}",
+        "usage_by_kind": "유형별: {s}",
+        "sched_added": "⏰ 예약 등록 {id} — {spec}\n다음 실행: {next}",
+        "sched_removed": "🗑️ {id} 삭제했어.",
+        "sched_not_found": "{id}? 그런 예약 없어 — `!schedule list`로 확인해줘.",
+        "sched_empty": "예약이 없어. `!schedule daily 09:00 <할 일>` 이렇게 등록해줘.",
+        "sched_list_header": "⏰ 예약 목록:",
+        "sched_fired": "⏰ 예약 {id} ({spec}):\n",
+        "sched_help": ("사용법:\n"
+                       "• `!schedule daily HH:MM <할 일>`\n"
+                       "• `!schedule weekly mon..sun HH:MM <할 일>` (월~일도 가능)\n"
+                       "• `!schedule once YYYY-MM-DD HH:MM <할 일>`\n"
+                       "• `!schedule list` · `!schedule remove s1`"),
+        "learn_saved": "🧠 기록했어 — 인박스에 {n}건 대기 중 (state/learnings.md).",
         "invited": ("📥 새 채널에 초대됐어: #{name}\n"
                     "기본으로 거기서 누구나 조회 가능해 — 읽기전용, loki.md에 공개한 "
                     "경로 안에서만.\n"
@@ -170,6 +216,8 @@ def _find_claude() -> str:
 CLAUDE_CMD = _find_claude()
 WORK_DIR = os.environ.get("WORK_DIR", "").strip()
 TIMEOUT_SEC = int(os.environ.get("TIMEOUT_SEC", "300"))
+# parallel claude jobs (same-conversation jobs still run in order)
+JOB_CONCURRENCY = max(1, int(os.environ.get("JOB_CONCURRENCY", "2")))
 MODEL = os.environ.get("CLAUDE_MODEL", "").strip()
 SELFTEST_ON_BOOT = os.environ.get("SELFTEST_ON_BOOT", "1") == "1"
 
