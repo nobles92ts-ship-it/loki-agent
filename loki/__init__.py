@@ -1,2 +1,2 @@
 """Loki — a local personal agent whose brain is your Claude Code subscription."""
-__version__ = "1.2.0"
+__version__ = "1.3.0"

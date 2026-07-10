@@ -8,3 +8,6 @@ __pycache__/
 *.bak_*
 *~
 *.orig
+
+# private, workspace-specific commands (keep your real ones out of the repo)
+loki/platforms/slack/private_commands.py

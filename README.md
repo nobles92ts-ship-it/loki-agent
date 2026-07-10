@@ -76,9 +76,22 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 | `CLAUDE_MODEL` | account default | e.g. `sonnet` (lighter on your limits) |
 | `TIMEOUT_SEC` | `300` | per-request timeout |
 | `JOB_CONCURRENCY` | `2` | parallel Claude jobs (same conversation always stays in order) |
+| `GUEST_RATE_PER_HOUR` | `10` | max guest requests per rolling hour (`0` = unlimited); owners never limited |
+| `CLAUDE_CONFIG_DIR` | default account | give Loki its own Claude login — see [Dedicated account](#dedicated-account) |
 | `LOKI_LANG` | `en` | bot message language: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | how much channel history a bare mention sees |
 | `CLAUDE_CMD` | auto-detected | full path to `claude` if not on PATH |
+
+### Dedicated account
+
+Loki's brain is the `claude` CLI, which uses whatever account you're logged into. To give Loki its **own** account — e.g. a work account separate from your personal one — point it at a dedicated config dir. Claude isolates `.credentials.json` per directory (Windows/Linux), so each dir is an independent login:
+
+```powershell
+# one-time: log a specific account into a dedicated dir
+$env:CLAUDE_CONFIG_DIR = "C:\Users\You\.claude-loki"
+claude            # run /login, pick the account Loki should use
+```
+Then set `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki` in `.env` (the wizard also asks). Loki now authenticates as that account, no matter which account your terminal uses. Leave it blank to share your default login.
 
 ## Permissions — who can do what
 
@@ -156,6 +169,8 @@ Loki → ✅ done — check the sheet.
 
 That's the whole pitch: **install any Claude Code skill — yours or the community's — and Loki is its remote control.**
 
+**Wiring your own `!command`:** copy `loki/platforms/slack/private_commands.example.py` → `private_commands.py` (gitignored) and implement `try_handle(ctx)`. It runs before normal dispatch, so you can gate a heavy pipeline to named trusted users and stream progress back — without touching core or forking the repo.
+
 → Full worked example + code sketch: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
 
 ## Security model
@@ -183,6 +198,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.0 | ✅ Slack (DM · channel mentions · thread/channel context · guest read-only) |
 | v1.1 | ✅ guest path allowlist (`loki.md`) · channel `!block` · owner `!summary` |
 | v1.2 | ✅ macOS/Linux · scheduler (`!schedule`) · parallel jobs + `!jobs`/`!cancel` · `!usage` · `!learn` · test suite + CI |
+| v1.3 | ✅ dedicated account (`CLAUDE_CONFIG_DIR`) · guest rate limiting · private-command hook (`try_handle`) |
 | v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |

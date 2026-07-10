@@ -67,6 +67,10 @@ def run_claude(prompt: str, resume_id: str | None,
            if not (k.startswith("CLAUDE_CODE") or k == "CLAUDECODE"
                    or k.startswith("ANTHROPIC_"))}
     env["PYTHONUTF8"] = "1"
+    # Dedicated account: pin claude to its own config dir (its own login),
+    # authoritative over anything inherited from the parent environment.
+    if config.CLAUDE_CONFIG_DIR:
+        env["CLAUDE_CONFIG_DIR"] = config.CLAUDE_CONFIG_DIR
     spawn_kw: dict = {}
     if os.name == "nt":
         spawn_kw["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP

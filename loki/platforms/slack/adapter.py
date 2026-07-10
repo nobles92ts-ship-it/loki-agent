@@ -16,9 +16,17 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import brain, config, dedup, jobs, learn, scheduler, scope, usage
+from ...core import (brain, config, dedup, jobs, learn, ratelimit, scheduler,
+                     scope, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
+
+# Optional private command extension — gitignored, workspace-specific heavy
+# commands (see private_commands.example.py). Absent in a clean checkout.
+try:
+    from . import private_commands as _private
+except Exception:
+    _private = None
 
 # ─────────────────────────── settings ───────────────────────────
 BOT_TOKEN = require("SLACK_BOT_TOKEN")
@@ -381,6 +389,18 @@ def _dispatch(body, event, is_mention: bool) -> None:
 
     thread = event.get("thread_ts") or event["ts"]
 
+    # Private, workspace-specific commands (gitignored extension point). Runs for
+    # owner + named trusted users; bypasses the guest queue/throttle by design.
+    if _private is not None:
+        try:
+            if _private.try_handle({
+                    "app": app, "event": event, "text": text, "user": user,
+                    "channel": channel, "thread": thread, "is_owner": is_owner,
+                    "post": _post}):
+                return
+        except Exception:
+            log.exception("private command handler failed")
+
     # owner commands: !block / !unblock a channel, !summary <channel_id>
     if is_owner:
         m = _BLOCK_RE.match(text)
@@ -431,6 +451,14 @@ def _dispatch(body, event, is_mention: bool) -> None:
         _post(channel, thread,
               t("stopped_n", n=n) if n else t("nothing_running"))
         return
+
+    # Guest throttle — protect the owner's subscription (owners never limited).
+    if not is_owner:
+        allowed, retry = ratelimit.check(user)
+        if not allowed:
+            _post(channel, thread,
+                  t("rate_limited", n=config.GUEST_RATE_PER_HOUR, m=retry))
+            return
 
     qsize = jobs.JOBS.qsize()
     try:

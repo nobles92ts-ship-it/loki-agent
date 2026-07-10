@@ -53,7 +53,19 @@ cd loki-agent
 ./setup.sh
 ```
 
-The wizard creates the venv, installs dependencies, asks for the two tokens, your Slack member ID (allowlist), the working directory, language, and permission mode — then runs `tools\diag.py` to verify everything.
+The wizard creates the venv, installs dependencies, asks for the two tokens, your Slack member ID (allowlist), the working directory, language, permission mode, an optional **dedicated-account** config dir, and the **guest hourly limit** — then runs `tools\diag.py` to verify everything.
+
+### Optional: give Loki its own Claude account
+
+By default Loki uses whatever account `claude` is logged into. To run it under a **separate** account (e.g. a work login kept apart from your personal one), log that account into a dedicated config dir once, then point `.env` at it:
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "C:\Users\You\.claude-loki"   # any empty dir
+claude                                                  # run /login → choose the account
+# then in .env:  CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki
+```
+
+Claude stores `.credentials.json` inside that dir (Windows/Linux), so it's a fully independent login. macOS uses the system Keychain and doesn't isolate per-dir — use a separate OS user there instead.
 
 **Finding your Slack member ID:** your Slack profile → **⋯ (More)** → **Copy member ID** (`U…`).
 

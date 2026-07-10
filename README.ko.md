@@ -76,9 +76,22 @@ cd loki-agent
 | `CLAUDE_MODEL` | 계정 기본 | 예: `sonnet` (한도 절약) |
 | `TIMEOUT_SEC` | `300` | 요청당 타임아웃 |
 | `JOB_CONCURRENCY` | `2` | 동시 Claude 작업 수 (같은 대화는 항상 순서 유지) |
+| `GUEST_RATE_PER_HOUR` | `10` | 게스트 1인당 시간당 최대 요청 수 (`0`=무제한). 오너는 무제한 |
+| `CLAUDE_CONFIG_DIR` | 기본 계정 | Loki에게 전용 Claude 로그인 부여 — [전용 계정](#전용-계정) 참조 |
 | `LOKI_LANG` | `en` | 봇 메시지 언어: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | 채널 멘션이 보는 최근 대화 범위 |
 | `CLAUDE_CMD` | 자동탐지 | PATH에 없을 때 claude 전체 경로 |
+
+### 전용 계정
+
+Loki의 두뇌는 `claude` CLI라서 네가 로그인한 계정을 그대로 쓴다. Loki에게 **전용 계정**(예: 개인용과 분리된 회사 계정)을 주려면 전용 config 디렉토리를 가리키면 된다. Claude는 디렉토리별로 `.credentials.json`을 격리하므로(Windows/Linux), 디렉토리마다 독립된 로그인이다:
+
+```powershell
+# 1회: 특정 계정을 전용 디렉토리에 로그인
+$env:CLAUDE_CONFIG_DIR = "C:\Users\You\.claude-loki"
+claude            # /login 실행 → Loki가 쓸 계정 선택
+```
+그다음 `.env`에 `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki`를 넣는다(마법사도 물어봄). 이제 터미널이 어떤 계정을 쓰든 Loki는 그 계정으로 인증한다. 비워두면 기본 로그인을 공유.
 
 ## 권한 — 누가 뭘 할 수 있나
 
@@ -154,6 +167,8 @@ Loki → ✅ 완료 — 시트 확인해줘.
 
 핵심은 이거야: **어떤 Claude Code 스킬이든 — 내 것이든 커뮤니티 것이든 — 설치하면 Loki가 그 리모컨이 된다.**
 
+**내 `!명령` 배선하기:** `loki/platforms/slack/private_commands.example.py`를 `private_commands.py`로 복사(gitignore됨)하고 `try_handle(ctx)`를 구현하면 된다. 일반 디스패치보다 먼저 실행되므로, 무거운 파이프라인을 지정 신뢰 유저에게만 열고 진행상황을 스트리밍할 수 있다 — 코어를 건드리거나 레포를 포크할 필요 없이.
+
 → 전체 실전 예시 + 코드 스케치: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
 
 ## 보안 모델
@@ -181,6 +196,7 @@ Loki → ✅ 완료 — 시트 확인해줘.
 | v1.0 | ✅ Slack (DM · 채널 멘션 · 스레드/채널 맥락 · 게스트 읽기전용) |
 | v1.1 | ✅ 게스트 경로 allowlist(`loki.md`) · 채널 `!block` · 오너 `!summary` |
 | v1.2 | ✅ macOS/Linux · 스케줄러(`!schedule`) · 병렬 작업+`!jobs`/`!cancel` · `!usage` · `!learn` · 테스트+CI |
+| v1.3 | ✅ 전용 계정(`CLAUDE_CONFIG_DIR`) · 게스트 rate limit · 사설 명령 훅(`try_handle`) |
 | v2.0 | **Telegram** 어댑터 (`platforms/base` 계약 첫 검증) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
