@@ -7,42 +7,45 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 
 from . import config
 from .config import ANSI, log, t
 
-_current: dict = {"proc": None}   # running subprocess handle, for !stop / tree-kill
-
 
 def tree_kill(pid: int) -> None:
+    """Kill a claude job and all its children (Windows: taskkill /T,
+    POSIX: the whole process group — spawned with start_new_session)."""
     try:
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True, creationflags=config.NO_WINDOW,
-        )
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True, creationflags=config.NO_WINDOW,
+            )
+        else:
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                os.kill(pid, signal.SIGKILL)
     except Exception:
-        log.exception("taskkill failed")
-
-
-def stop_current() -> bool:
-    """Kill the currently running claude job. Returns True if one was running."""
-    proc = _current.get("proc")
-    if not proc:
-        return False
-    tree_kill(proc.pid)
-    return True
+        log.exception("tree_kill failed")
 
 
 def run_claude(prompt: str, resume_id: str | None,
                permission_mode: str | None = None,
                settings_file: str | None = None,
-               cwd: str | None = None) -> dict:
+               cwd: str | None = None,
+               job: dict | None = None) -> dict:
     """Run claude headless. Returns {text, session_id, error(bool), reason}.
 
     settings_file: per-request settings JSON (e.g. the guest allowlist's deny
     rules — too long for the command line, cmd.exe caps it at 8191 chars).
-    cwd: working directory override (guests are pinned to the loki folder)."""
+    cwd: working directory override (guests are pinned to the loki folder).
+    job: the queue's job dict — the live proc handle is attached to it so
+    !cancel <id> / !stop can tree-kill exactly the right process."""
     mode = permission_mode or config.PERMISSION_MODE
     cmd = [
         config.CLAUDE_CMD, "-p",
@@ -64,21 +67,26 @@ def run_claude(prompt: str, resume_id: str | None,
            if not (k.startswith("CLAUDE_CODE") or k == "CLAUDECODE"
                    or k.startswith("ANTHROPIC_"))}
     env["PYTHONUTF8"] = "1"
-    flags = ((subprocess.CREATE_NEW_PROCESS_GROUP | config.NO_WINDOW)
-             if os.name == "nt" else 0)
+    spawn_kw: dict = {}
+    if os.name == "nt":
+        spawn_kw["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                     | config.NO_WINDOW)
+    else:
+        spawn_kw["start_new_session"] = True   # own process group → killpg works
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd or config.WORK_DIR,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             encoding="utf-8", errors="replace", env=env,
-            creationflags=flags,
+            **spawn_kw,
         )
     except FileNotFoundError:
         return {"text": t("claude_not_found", path=config.CLAUDE_CMD),
                 "session_id": resume_id, "error": True, "reason": "error"}
 
-    _current["proc"] = proc
+    if job is not None:
+        job["proc"] = proc
     try:
         out, err = proc.communicate(input=prompt, timeout=config.TIMEOUT_SEC)
     except subprocess.TimeoutExpired:
@@ -90,7 +98,8 @@ def run_claude(prompt: str, resume_id: str | None,
         return {"text": t("timeout"),
                 "session_id": resume_id, "error": True, "reason": "timeout"}
     finally:
-        _current["proc"] = None
+        if job is not None:
+            job.pop("proc", None)
 
     return _parse(out, err, proc.returncode, resume_id)
 

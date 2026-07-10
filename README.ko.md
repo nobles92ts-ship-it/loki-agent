@@ -1,5 +1,7 @@
 # Loki
 
+[![CI](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml)
+
 **내 PC와 대화하기.** Loki는 Slack을 내 컴퓨터에서 도는 [Claude Code](https://claude.com/claude-code)에 연결해주는 작은 로컬 에이전트다 — 이미 쓰고 있는 Claude 구독으로 돌아간다.
 
 API 키 없음. 건바이건 과금 없음. 내 파일, 내 셸, 내 Claude — 폰에서 닿는다.
@@ -25,10 +27,10 @@ Slack DM / @멘션
 - **맥락 인지** — 스레드에서 부르면 스레드를, 채널에서 그냥 부르면 최근 채널 대화를 읽는다. 모든 맥락은 *지시가 아닌 데이터*로 감싼다(인젝션 가드).
 - **확장 전제 설계** — `loki/core`는 플랫폼 무관. Slack은 첫 어댑터일 뿐([로드맵](#로드맵)).
 
-## 빠른 시작 (Windows)
+## 빠른 시작
 
 **전제조건**
-- Windows 10/11, Python 3.10+
+- Windows 10/11, macOS, 또는 Linux · Python 3.10+
 - [Claude Code](https://claude.com/claude-code) 설치+로그인(터미널에서 `claude`가 됨), Pro/Max 구독
 - Slack 워크스페이스 앱 생성 권한
 
@@ -40,6 +42,8 @@ Slack DM / @멘션
 5. ⚠️ **App Home 탭 → "Allow users to send Slash commands and messages from the messages tab" 체크** — 안 하면 DM 입력창이 막힌다.
 
 **2. 셋업 & 실행**
+
+Windows:
 ```powershell
 git clone https://github.com/nobles92ts-ship-it/loki-agent.git
 cd loki-agent
@@ -47,9 +51,17 @@ cd loki-agent
 .\venv\Scripts\python.exe -m loki
 ```
 
+macOS / Linux:
+```bash
+git clone https://github.com/nobles92ts-ship-it/loki-agent.git
+cd loki-agent
+./setup.sh           # 같은 마법사
+./venv/bin/python -m loki
+```
+
 **3. 테스트** — 봇에게 DM: `안녕`. 첫 응답 ~15–30초.
 
-선택: `.\setup.ps1 -Autostart` 로 로그인 시 백그라운드 자동 실행 등록.
+자동 시작: `.\setup.ps1 -Autostart`(Windows 로그인 런처) · systemd/launchd 예시는 [docs/SETUP.md](docs/SETUP.md).
 상세 가이드+트러블슈팅: [docs/SETUP.md](docs/SETUP.md)
 
 ## 설정 (`.env`)
@@ -63,6 +75,7 @@ cd loki-agent
 | `CLAUDE_PERMISSION_MODE` | `plan` | `plan`=읽기전용(기본) · `bypassPermissions`=전체 쓰기/실행 — opt-in, [SECURITY](docs/SECURITY.md) 필독 |
 | `CLAUDE_MODEL` | 계정 기본 | 예: `sonnet` (한도 절약) |
 | `TIMEOUT_SEC` | `300` | 요청당 타임아웃 |
+| `JOB_CONCURRENCY` | `2` | 동시 Claude 작업 수 (같은 대화는 항상 순서 유지) |
 | `LOKI_LANG` | `en` | 봇 메시지 언어: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | 채널 멘션이 보는 최근 대화 범위 |
 | `CLAUDE_CMD` | 자동탐지 | PATH에 없을 때 claude 전체 경로 |
@@ -85,10 +98,24 @@ cd loki-agent
 
 | 명령 | 어디서 | 동작 |
 |---|---|---|
-| `!stop` / `중지` | 어디서든 | 실행 중 작업 강제 중단 |
+| `!stop` / `중지` | 어디서든 | **전부 취소** — 대기 작업 제거 + 실행 작업 강제 종료 |
+| `!jobs` / `!작업목록` | 어디서든 | 실행·대기 중 작업을 id와 함께 나열 |
+| `!cancel <작업id>` / `!취소` | 어디서든 | **하나만** 골라 중단/제거 (id는 `!jobs`에서) |
+| `!usage [일수]` / `!사용량` | 어디서든 | 사용량 리포트: 호출 수·성공/실패·총 시간·유저/유형별 (기본 7일) |
+| `!schedule …` / `!예약` | DM | 반복/1회 예약 실행 — 아래 참조 |
+| `!learn <메모>` / `!학습` | DM | 학습 인박스에 기록 (`state/learnings.md`) |
 | `!block <채널ID>` / `!차단` | DM | 그 채널에서 게스트 사용 차단 (영구 저장) |
 | `!unblock <채널ID>` / `!차단해제` | DM | 차단 해제 |
 | `!summary <채널ID>` / `!채널요약` | DM | 그 채널에 안 가고 최근 대화 요약 받기 |
+
+**스케줄러** — Loki가 능동형이 된다: DM에서 프롬프트를 예약하면 결과가 그 DM으로 돌아온다. *내* 권한 모드로 실행되고, 시간은 PC 로컬 기준. PC가 꺼져 있었으면 반복 예약은 다음 슬롯으로 건너뛰고(밀린 것 몰아서 실행 안 함), 놓친 `once`는 부팅 때 바로 실행된다.
+
+```
+!schedule daily 09:00 어제 git log 요약해줘
+!schedule weekly fri 17:30 이번 주 메모로 주간보고 초안 써줘
+!schedule once 2026-12-24 18:00 일찍 마무리하라고 리마인드
+!schedule list · !schedule remove s1
+```
 
 ### 게스트 allowlist (`loki.md`)
 
@@ -143,7 +170,7 @@ Loki → ✅ 완료 — 시트 확인해줘.
 
 **비용은?** 추가 비용 없음 — 내 구독의 롤링 사용 한도를 쓴다. 팁: `CLAUDE_MODEL=sonnet`이면 한도가 오래 간다.
 
-**macOS / Linux?** 아직 — Windows 특화 부분(`taskkill`, 콘솔창 숨김, `.cmd` 심)이 있다. 로드맵 참조.
+**macOS / Linux?** 된다 — `./setup.sh` 후 `./venv/bin/python -m loki`. CI가 Ubuntu·Windows·macOS에서 테스트 스위트를 돌린다.
 
 **왜 Socket Mode?** 공개 URL·포트포워딩 불필요, 어떤 NAT/방화벽 뒤에서도 동작.
 
@@ -153,8 +180,8 @@ Loki → ✅ 완료 — 시트 확인해줘.
 |---|---|
 | v1.0 | ✅ Slack (DM · 채널 멘션 · 스레드/채널 맥락 · 게스트 읽기전용) |
 | v1.1 | ✅ 게스트 경로 allowlist(`loki.md`) · 채널 `!block` · 오너 `!summary` |
-| v1.x | i18n 다듬기, 진단 도구, 셋업 마법사 강화 |
-| v2.0 | **Telegram** 어댑터 (`platforms/base` 계약 첫 검증) · macOS/Linux |
+| v1.2 | ✅ macOS/Linux · 스케줄러(`!schedule`) · 병렬 작업+`!jobs`/`!cancel` · `!usage` · `!learn` · 테스트+CI |
+| v2.0 | **Telegram** 어댑터 (`platforms/base` 계약 첫 검증) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

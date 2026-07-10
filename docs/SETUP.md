@@ -6,7 +6,7 @@ Full walkthrough for getting Loki running. The short version lives in the [READM
 
 | What | Check |
 |---|---|
-| Windows 10/11 | — |
+| Windows 10/11 · macOS · Linux | — |
 | Python 3.10+ | `python --version` |
 | Claude Code, logged in | `claude --version` works, and `claude` in a terminal answers (Pro/Max subscription) |
 | Slack workspace app permission | you can open <https://api.slack.com/apps> and create an app |
@@ -45,6 +45,14 @@ cd loki-agent
 .\setup.ps1
 ```
 
+macOS / Linux:
+
+```bash
+git clone https://github.com/nobles92ts-ship-it/loki-agent.git
+cd loki-agent
+./setup.sh
+```
+
 The wizard creates the venv, installs dependencies, asks for the two tokens, your Slack member ID (allowlist), the working directory, language, and permission mode — then runs `tools\diag.py` to verify everything.
 
 **Finding your Slack member ID:** your Slack profile → **⋯ (More)** → **Copy member ID** (`U…`).
@@ -59,15 +67,55 @@ venv\Scripts\python.exe -m pip install -r requirements.txt
 ## 3. Start Loki
 
 ```powershell
-.\venv\Scripts\python.exe -m loki
+.\venv\Scripts\python.exe -m loki      # Windows
+```
+```bash
+./venv/bin/python -m loki              # macOS / Linux
 ```
 
 - First boot in read-only mode runs a ~20 s **self-test** proving that plan mode cannot write files (fail-closed — Loki refuses to start if the guarantee breaks).
 - Then: `Connecting to Slack (Socket Mode)…` → DM your bot `hello`.
 
-Background / autostart options:
+Background / autostart — Windows:
 - Double-click `run_worker.vbs` — runs hidden, survives closing the terminal.
 - `.\setup.ps1 -Autostart` — registers a launcher in your Startup folder (runs at login).
+
+Background / autostart — macOS / Linux:
+- Quick: `nohup ./venv/bin/python -m loki >/dev/null 2>&1 &`
+- Linux (systemd user service) — `~/.config/systemd/user/loki.service`, then `systemctl --user enable --now loki`:
+
+  ```ini
+  [Unit]
+  Description=Loki agent
+  After=network-online.target
+
+  [Service]
+  WorkingDirectory=%h/loki-agent
+  ExecStart=%h/loki-agent/venv/bin/python -m loki
+  Restart=on-failure
+
+  [Install]
+  WantedBy=default.target
+  ```
+
+- macOS (launchd) — `~/Library/LaunchAgents/com.loki.agent.plist`, then `launchctl load` it (replace `YOU` with your username):
+
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0"><dict>
+    <key>Label</key><string>com.loki.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/YOU/loki-agent/venv/bin/python</string>
+      <string>-m</string><string>loki</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/YOU/loki-agent</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+  </dict></plist>
+  ```
 
 ## 4. Using it in channels
 

@@ -16,7 +16,7 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import brain, config, dedup, jobs, scope
+from ...core import brain, config, dedup, jobs, learn, scheduler, scope, usage
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -39,6 +39,11 @@ _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 _BLOCK_RE = re.compile(r"^!(?:block|차단)\s+(\S+)$", re.IGNORECASE)
 _UNBLOCK_RE = re.compile(r"^!(?:unblock|차단해제)\s+(\S+)$", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"^!(?:summary|채널요약)\s+(\S+)$", re.IGNORECASE)
+_USAGE_RE = re.compile(r"^!(?:usage|사용량)(?:\s+(\d{1,3}))?$", re.IGNORECASE)
+_JOBS_RE = re.compile(r"^!(?:jobs|작업목록)$", re.IGNORECASE)
+_CANCEL_RE = re.compile(r"^!(?:cancel|취소)\s+(j\d+)$", re.IGNORECASE)
+_SCHED_RE = re.compile(r"^!(?:schedule|예약)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+_LEARN_RE = re.compile(r"^!(?:learn|학습)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 _names: dict[str, str] = {}         # user id -> display name cache
 
 
@@ -134,7 +139,7 @@ def _channel_context(channel: str) -> str:
 
 # ─────────────────────────── job handling ───────────────────────────
 def _handle(job: dict) -> None:
-    thread = job["thread"]
+    thread = job.get("thread")     # None for scheduled fires → top-level DM post
     # If the job runs long, reassure the user it isn't dead (cancelled if it finishes first).
     notice = threading.Timer(60.0, _safe_post, args=(job, t("processing_notice")))
     notice.daemon = True
@@ -157,7 +162,7 @@ def _handle(job: dict) -> None:
             context, kind, scope_label = "", "kind_thread", ""
         prompt = build_prompt(context, job["text"], kind, scope_label)
         with jobs.sess_lock:
-            resume_id = jobs.sessions.get(thread)
+            resume_id = jobs.sessions.get(thread) if thread else None
         perm_mode = job["permission_mode"]
 
         # Guests: the loki.md allowlist — everything else is tool-level denied
@@ -172,28 +177,37 @@ def _handle(job: dict) -> None:
 
         t0 = time.time()
         res = brain.run_claude(prompt, resume_id, perm_mode,
-                               settings_file=guest_settings, cwd=run_cwd)
+                               settings_file=guest_settings, cwd=run_cwd,
+                               job=job)
+        if job.get("cancelled"):           # killed via !cancel/!stop — stay quiet
+            return
 
         # stale --resume → retry once with a fresh session
         if res["error"] and resume_id and res["reason"] == "error":
             res = brain.run_claude(prompt, None, perm_mode,
-                                   settings_file=guest_settings, cwd=run_cwd)
+                                   settings_file=guest_settings, cwd=run_cwd,
+                                   job=job)
+            if job.get("cancelled"):
+                return
             if not res["error"]:
                 res["text"] = t("fresh_restart") + res["text"]
 
-        if res.get("session_id"):
+        if thread and res.get("session_id"):
             with jobs.sess_lock:
                 jobs.sessions[thread] = res["session_id"]
 
-        log.info("job user=%s ev=%s reason=%s dur=%ds chars=%d",
-                 job["user"], job["event_id"], res["reason"],
-                 int(time.time() - t0), len(res["text"]))
+        dur = time.time() - t0
+        usage.record(job.get("kind", "?"), job.get("user", "?"),
+                     res["reason"] == "ok", dur, res["reason"])
+        log.info("job id=%s kind=%s user=%s ev=%s reason=%s dur=%ds chars=%d",
+                 job.get("id"), job.get("kind"), job["user"], job["event_id"],
+                 res["reason"], int(dur), len(res["text"]))
 
         if res["reason"] == "quota":
             _safe_post(job, t("quota"))
             time.sleep(30)
             return
-        _safe_post(job, res["text"])
+        _safe_post(job, job.get("reply_prefix", "") + res["text"])
     finally:
         notice.cancel()
 
@@ -203,10 +217,10 @@ def _on_job_error(job: dict, e: Exception) -> None:
 
 
 def _safe_post(job: dict, text: str) -> None:
+    kw = {"thread_ts": job["thread"]} if job.get("thread") else {}
     try:
         for chunk in _chunks(text):
-            app.client.chat_postMessage(
-                channel=job["channel"], thread_ts=job["thread"], text=chunk)
+            app.client.chat_postMessage(channel=job["channel"], text=chunk, **kw)
     except Exception:
         log.exception("post failed")
 
@@ -221,6 +235,89 @@ def _chunks(s: str):
         s = s[cut:]
     if s:
         yield s
+
+
+# ─────────────────────────── owner command helpers ───────────────────────────
+def _fmt_dur(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60:02d}s"
+    return f"{s // 3600}h {(s % 3600) // 60:02d}m"
+
+
+def _fmt_usage(days: int) -> str:
+    data = usage.summarize(max(1, min(days, 90)))
+    if not data["total"]:
+        return t("usage_empty")
+    lines = [t("usage_header", d=data["days"], n=data["total"], ok=data["ok"],
+               fail=data["fail"], dur=_fmt_dur(data["dur_total"])),
+             t("usage_today", n=data["today"]["total"],
+               dur=_fmt_dur(data["today"]["dur"]))]
+    if data["by_user"]:
+        s = " · ".join(f"{_user_name(u) or u} {n}"
+                       for u, n in data["by_user"][:8])
+        lines.append(t("usage_by_user", s=s))
+    if data["by_kind"]:
+        lines.append(t("usage_by_kind",
+                       s=" · ".join(f"{k} {n}" for k, n in data["by_kind"])))
+    return "\n".join(lines)
+
+
+def _fmt_jobs() -> str:
+    items = jobs.snapshot()
+    if not items:
+        return t("jobs_none")
+    running = [j for j in items if j["status"] == "running"]
+    queued = [j for j in items if j["status"] == "queued"]
+    lines = [t("jobs_header", r=len(running), q=len(queued))]
+    now = time.time()
+    for j in running + queued:
+        who = _user_name(j.get("user")) or j.get("user") or "?"
+        age = _fmt_dur(now - j["started"]) if j.get("started") else "—"
+        snip = (j.get("text") or "").replace("\n", " ")[:48]
+        lines.append(f"• {j['id']} [{j['status']}] {j.get('kind', '?')}/{who}"
+                     f" · {age} · “{snip}”")
+    return "\n".join(lines)
+
+
+def _schedule_cmd(channel: str, arg: str) -> str:
+    a = arg.strip()
+    if a.lower() in ("list", "목록"):
+        items = scheduler.list_all()
+        if not items:
+            return t("sched_empty")
+        lines = [t("sched_list_header")]
+        for s in items:
+            nxt = time.strftime("%Y-%m-%d %H:%M",
+                                time.localtime(s.get("next_fire", 0)))
+            snip = (s.get("prompt") or "").replace("\n", " ")[:60]
+            lines.append(f"• {s['id']} — {scheduler.spec_str(s)} → {nxt} · “{snip}”")
+        return "\n".join(lines)
+    m = re.match(r"^(?:remove|delete|삭제|제거)\s+(s\d+)$", a, re.IGNORECASE)
+    if m:
+        sid = m.group(1).lower()
+        return (t("sched_removed", id=sid) if scheduler.remove(sid)
+                else t("sched_not_found", id=sid))
+    spec = scheduler.parse(a)
+    if not spec:
+        return t("sched_help")
+    item = scheduler.add(spec, channel)
+    nxt = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["next_fire"]))
+    return t("sched_added", id=item["id"], spec=scheduler.spec_str(item), next=nxt)
+
+
+def _fire_schedule(s: dict) -> None:
+    """Scheduler callback — runs at owner permission, posts to the origin DM."""
+    jobs.submit({
+        "channel": s["channel"], "thread": None,
+        "text": s["prompt"], "user": ALLOWED_USER,
+        "event_id": f"sched-{s['id']}-{int(time.time())}",
+        "in_thread": False, "is_mention": False,
+        "permission_mode": config.PERMISSION_MODE, "kind": "scheduled",
+        "reply_prefix": t("sched_fired", id=s["id"], spec=scheduler.spec_str(s)),
+    })
 
 
 # ─────────────────────────── Slack event handling ───────────────────────────
@@ -298,16 +395,41 @@ def _dispatch(body, event, is_mention: bool) -> None:
             return
         m = _SUMMARY_RE.match(text)
         if m:
-            jobs.JOBS.put({"channel": channel, "thread": thread,
-                           "text": t("summary_request"), "user": user,
-                           "event_id": event_id, "in_thread": False,
-                           "is_mention": False, "permission_mode": "plan",
-                           "target_channel": m.group(1)})
+            jobs.submit({"channel": channel, "thread": thread,
+                         "text": t("summary_request"), "user": user,
+                         "event_id": event_id, "in_thread": False,
+                         "is_mention": False, "permission_mode": "plan",
+                         "target_channel": m.group(1), "kind": "summary"})
+            return
+        m = _USAGE_RE.match(text)
+        if m:
+            _post(channel, thread, _fmt_usage(int(m.group(1) or 7)))
+            return
+        if _JOBS_RE.match(text):
+            _post(channel, thread, _fmt_jobs())
+            return
+        m = _CANCEL_RE.match(text)
+        if m:
+            jid = m.group(1).lower()
+            key = {"killed": "cancel_killed", "dequeued": "cancel_dequeued",
+                   "starting": "cancel_retry"}.get(jobs.cancel(jid),
+                                                   "cancel_not_found")
+            _post(channel, thread, t(key, id=jid))
+            return
+        m = _SCHED_RE.match(text)
+        if m:
+            _post(channel, thread, _schedule_cmd(channel, m.group(1)))
+            return
+        m = _LEARN_RE.match(text)
+        if m:
+            _post(channel, thread,
+                  t("learn_saved", n=learn.capture(m.group(1))))
             return
 
     if is_owner and text.lower() in ("!stop", "!cancel", "중지", "!중지"):
+        n = jobs.cancel_all()
         _post(channel, thread,
-              t("stopped") if brain.stop_current() else t("nothing_running"))
+              t("stopped_n", n=n) if n else t("nothing_running"))
         return
 
     qsize = jobs.JOBS.qsize()
@@ -318,10 +440,11 @@ def _dispatch(body, event, is_mention: bool) -> None:
     if qsize > 0:
         _post(channel, thread, t("queued", n=qsize))
 
-    jobs.JOBS.put({"channel": channel, "thread": thread, "text": text,
-                   "user": user, "event_id": event_id,
-                   "in_thread": bool(event.get("thread_ts")),
-                   "is_mention": is_mention, "permission_mode": permission_mode})
+    jobs.submit({"channel": channel, "thread": thread, "text": text,
+                 "user": user, "event_id": event_id,
+                 "in_thread": bool(event.get("thread_ts")),
+                 "is_mention": is_mention, "permission_mode": permission_mode,
+                 "kind": "owner" if is_owner else "guest"})
 
 
 def _post(channel: str, thread: str, text: str) -> None:
@@ -384,9 +507,11 @@ def run() -> None:
         log.exception("auth.test failed")
         print("[loki] Slack auth failed — check SLACK_BOT_TOKEN.", file=sys.stderr)
         sys.exit(2)
-    jobs.start(_handle, _on_job_error)
-    log.info("worker starting allowlist=%s work_dir=%s mode=%s lang=%s",
-             ALLOWED_USER, config.WORK_DIR, config.PERMISSION_MODE, config.LANG)
+    jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
+    scheduler.start(_fire_schedule)
+    log.info("worker starting allowlist=%s work_dir=%s mode=%s lang=%s conc=%s",
+             ALLOWED_USER, config.WORK_DIR, config.PERMISSION_MODE, config.LANG,
+             config.JOB_CONCURRENCY)
     print(f"Loki (Slack) — allowlist={ALLOWED_USER}, work_dir={config.WORK_DIR}, "
           f"mode={config.PERMISSION_MODE}")
     print("Connecting to Slack (Socket Mode)…")

@@ -1,5 +1,7 @@
 # Loki
 
+[![CI](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml)
+
 **Chat with your own PC.** Loki is a small local agent that connects Slack to [Claude Code](https://claude.com/claude-code) running on your machine — powered by the Claude subscription you already have.
 
 No API key. No per-call billing. Your files, your shell, your Claude — reachable from your phone.
@@ -25,10 +27,10 @@ Slack DM / @mention
 - **Context aware** — mention it in a thread and it reads the thread; mention it bare in a channel and it reads recent channel history. All context is wrapped as *data, not instructions* (prompt-injection guard).
 - **Built to be extended** — `loki/core` is platform-agnostic; Slack is just the first adapter ([roadmap](#roadmap)).
 
-## Quick start (Windows)
+## Quick start
 
 **Prerequisites**
-- Windows 10/11, Python 3.10+
+- Windows 10/11, macOS, or Linux · Python 3.10+
 - [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` works in a terminal) with a Pro/Max subscription
 - Permission to create an app in your Slack workspace
 
@@ -40,6 +42,8 @@ Slack DM / @mention
 5. ⚠️ **App Home tab → check "Allow users to send Slash commands and messages from the messages tab"** — without this the DM input box is disabled.
 
 **2. Set up and run**
+
+Windows:
 ```powershell
 git clone https://github.com/nobles92ts-ship-it/loki-agent.git
 cd loki-agent
@@ -47,9 +51,17 @@ cd loki-agent
 .\venv\Scripts\python.exe -m loki
 ```
 
+macOS / Linux:
+```bash
+git clone https://github.com/nobles92ts-ship-it/loki-agent.git
+cd loki-agent
+./setup.sh           # same wizard
+./venv/bin/python -m loki
+```
+
 **3. Test** — DM your bot: `hello`. First reply takes ~15–30 s.
 
-Optional: `.\setup.ps1 -Autostart` registers a hidden background launcher at login.
+Autostart: `.\setup.ps1 -Autostart` (Windows login launcher) · systemd/launchd examples in [docs/SETUP.md](docs/SETUP.md).
 Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 
 ## Configuration (`.env`)
@@ -63,6 +75,7 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 | `CLAUDE_PERMISSION_MODE` | `plan` | `plan` = read-only (default) · `bypassPermissions` = full write/execute — opt-in, see [SECURITY](docs/SECURITY.md) |
 | `CLAUDE_MODEL` | account default | e.g. `sonnet` (lighter on your limits) |
 | `TIMEOUT_SEC` | `300` | per-request timeout |
+| `JOB_CONCURRENCY` | `2` | parallel Claude jobs (same conversation always stays in order) |
 | `LOKI_LANG` | `en` | bot message language: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | how much channel history a bare mention sees |
 | `CLAUDE_CMD` | auto-detected | full path to `claude` if not on PATH |
@@ -85,12 +98,26 @@ Want a third, in-between tier — named users who may trigger **one fixed pipeli
 
 | Command | Where | What it does |
 |---|---|---|
-| `!stop` | anywhere | kill the currently running job |
+| `!stop` | anywhere | cancel **everything** — queued jobs dropped, running jobs killed |
+| `!jobs` | anywhere | list running + queued jobs with ids |
+| `!cancel <job_id>` | anywhere | kill/dequeue **one** job (ids from `!jobs`) |
+| `!usage [days]` | anywhere | usage report: calls, ok/fail, total time, by user/kind (default 7 days) |
+| `!schedule …` | DM | recurring/one-shot prompts — see below |
+| `!learn <note>` | DM | append a note to your learnings inbox (`state/learnings.md`) |
 | `!block <channel_id>` | DM | silence Loki for guests in that channel (persisted) |
 | `!unblock <channel_id>` | DM | reopen it |
 | `!summary <channel_id>` | DM | summarize another channel's recent talk without going there |
 
-Korean aliases also work: `중지` · `차단` · `차단해제` · `채널요약`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약`.
+
+**Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
+
+```
+!schedule daily 09:00 summarize yesterday's git log in WORK_DIR
+!schedule weekly fri 17:30 draft my weekly report from this week's notes
+!schedule once 2026-12-24 18:00 remind me to wrap up early
+!schedule list · !schedule remove s1
+```
 
 ### The guest allowlist (`loki.md`)
 
@@ -145,7 +172,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 
 **What does it cost?** Nothing extra — requests consume your Claude subscription's rolling usage limits. Tip: `CLAUDE_MODEL=sonnet` stretches them further.
 
-**macOS / Linux?** Not yet — a few Windows-specific bits (`taskkill`, console-window suppression, the `.cmd` shim). See roadmap.
+**macOS / Linux?** Yes — `./setup.sh`, then `./venv/bin/python -m loki`. CI runs the test suite on Ubuntu, Windows, and macOS.
 
 **Why Socket Mode?** No public URL, no port-forwarding, works behind any NAT/firewall.
 
@@ -155,8 +182,8 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 |---|---|
 | v1.0 | ✅ Slack (DM · channel mentions · thread/channel context · guest read-only) |
 | v1.1 | ✅ guest path allowlist (`loki.md`) · channel `!block` · owner `!summary` |
-| v1.x | i18n polish, diagnostics, richer setup wizard |
-| v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) · macOS/Linux |
+| v1.2 | ✅ macOS/Linux · scheduler (`!schedule`) · parallel jobs + `!jobs`/`!cancel` · `!usage` · `!learn` · test suite + CI |
+| v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

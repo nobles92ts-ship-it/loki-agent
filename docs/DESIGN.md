@@ -24,7 +24,7 @@ loki/
 | **Brain = official `claude` CLI subprocess** | Uses your subscription login exactly like a terminal session — no API key to manage, no token extraction, clean ToS posture. |
 | **Prompt via stdin, not argv** | Windows `.cmd` shims drop/mangle positional args with spaces/unicode. stdin is loss-free. |
 | **Strip `CLAUDE_CODE*` / `ANTHROPIC_*` env before spawning** | If Loki is (re)started from inside a Claude Code session, the child would silently inherit *that session's* auth instead of the machine login. Stripping pins identity to `~/.claude`. |
-| **Serial queue** | One `claude -p` at a time keeps resource use predictable and makes `!stop` unambiguous. |
+| **Bounded concurrency, ordered conversations** | Up to `JOB_CONCURRENCY` (default 2) `claude -p` processes run in parallel, but jobs from the *same* conversation never overlap — `--resume` continuity stays intact. Every job gets an id: `!jobs` lists them, `!cancel <id>` kills exactly one, `!stop` cancels all. |
 | **Event dedup with TTL** | Slack redelivers events (3 s ack rule, reconnects). Without a seen-set you answer twice. |
 | **Socket Mode** | No inbound port, no public URL, works behind NAT — right default for "a bot on my desk". |
 | **`--permission-mode plan` default + boot self-test** | The safe default must be *verified*, not assumed: boot asks Claude to write a probe file and refuses to start if it succeeds. Fail-closed beats fail-open. |

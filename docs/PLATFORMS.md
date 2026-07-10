@@ -14,7 +14,7 @@
 Cross-cutting rules every adapter must keep:
 
 - **dedup** every event via `loki.core.dedup.already_seen` — platforms redeliver
-- an owner-only **`!stop`** command → `loki.core.brain.stop_current()`
+- owner-only job control: **`!stop`** → `loki.core.jobs.cancel_all()`, **`!cancel <id>`** → `loki.core.jobs.cancel()`, **`!jobs`** → `loki.core.jobs.snapshot()`
 - **metadata-only logging** — never message bodies
 - reuse `loki.core.config.t()` for user-facing strings (add keys for both `en`/`ko`)
 
