@@ -14,7 +14,7 @@ you → run my release-notes skill for the last 10 commits
 you → use the pdf skill to pull the tables out of report.pdf
 ```
 
-**Caveat:** anything that writes files or runs commands needs **owner + write mode**. Guest channel mentions are always read-only (`plan`) — they can look things up and summarize, but not run write-heavy pipelines.
+**Caveat:** anything that writes files or runs commands needs **owner + write mode**. Guest channel mentions are always read-only (`plan`) and scoped to the paths shared in `loki.md` — they can look things up and summarize, but not run write-heavy pipelines or touch anything outside the shared scope.
 
 ## 2. Wire a fixed command — repeatable / long-running pipelines
 

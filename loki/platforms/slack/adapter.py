@@ -16,7 +16,7 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import brain, config, dedup, jobs
+from ...core import brain, config, dedup, jobs, scope
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -30,12 +30,47 @@ CHANNEL_CTX_DAYS = int(os.environ.get("LOKI_CHANNEL_CTX_DAYS", "7"))
 CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
 SELFTEST_FILE = config.STATE / "selftest.json"
+BLOCKED_FILE = config.STATE / "blocked_channels.json"
 
 app = App(token=BOT_TOKEN)
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
+_BLOCK_RE = re.compile(r"^!(?:block|차단)\s+(\S+)$", re.IGNORECASE)
+_UNBLOCK_RE = re.compile(r"^!(?:unblock|차단해제)\s+(\S+)$", re.IGNORECASE)
+_SUMMARY_RE = re.compile(r"^!(?:summary|채널요약)\s+(\S+)$", re.IGNORECASE)
 _names: dict[str, str] = {}         # user id -> display name cache
+
+
+# ── channel block list (owner opt-out) ──────────────────────────────────────
+# Every channel Loki joins is usable by default; the owner can shut one off
+# from DM with "!block <channel_id>" and reopen it with "!unblock <id>".
+_blocked_lock = threading.Lock()
+
+
+def _load_blocked() -> set[str]:
+    try:
+        return set(json.loads(BLOCKED_FILE.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+BLOCKED_CHANNELS = _load_blocked()
+
+
+def _set_blocked(channel_id: str, blocked: bool) -> None:
+    with _blocked_lock:
+        (BLOCKED_CHANNELS.add if blocked else BLOCKED_CHANNELS.discard)(channel_id)
+        try:
+            BLOCKED_FILE.write_text(json.dumps(sorted(BLOCKED_CHANNELS)),
+                                    encoding="utf-8")
+        except Exception:
+            log.exception("blocked_channels.json write failed")
+
+
+def _is_blocked(channel_id: str) -> bool:
+    with _blocked_lock:
+        return channel_id in BLOCKED_CHANNELS
 
 
 def _strip_mention(text: str) -> str:
@@ -105,27 +140,44 @@ def _handle(job: dict) -> None:
     notice.daemon = True
     notice.start()
     try:
-        if job.get("in_thread"):
-            context, kind, scope = (_thread_context(job["channel"], thread),
-                                    "kind_thread", t("scope_thread"))
+        if job.get("target_channel"):          # owner's !summary <channel_id>
+            context, kind, scope_label = (_channel_context(job["target_channel"]),
+                                          "kind_channel",
+                                          t("scope_channel", d=CHANNEL_CTX_DAYS,
+                                            n=CHANNEL_CTX_MSGS))
+        elif job.get("in_thread"):
+            context, kind, scope_label = (_thread_context(job["channel"], thread),
+                                          "kind_thread", t("scope_thread"))
         elif job.get("is_mention"):
-            context, kind, scope = (_channel_context(job["channel"]),
-                                    "kind_channel",
-                                    t("scope_channel", d=CHANNEL_CTX_DAYS,
-                                      n=CHANNEL_CTX_MSGS))
+            context, kind, scope_label = (_channel_context(job["channel"]),
+                                          "kind_channel",
+                                          t("scope_channel", d=CHANNEL_CTX_DAYS,
+                                            n=CHANNEL_CTX_MSGS))
         else:
-            context, kind, scope = "", "kind_thread", ""
-        prompt = build_prompt(context, job["text"], kind, scope)
+            context, kind, scope_label = "", "kind_thread", ""
+        prompt = build_prompt(context, job["text"], kind, scope_label)
         with jobs.sess_lock:
             resume_id = jobs.sessions.get(thread)
         perm_mode = job["permission_mode"]
 
+        # Guests: the loki.md allowlist — everything else is tool-level denied
+        # via a per-request settings file, cwd pinned to the loki folder, and
+        # the shared scope explained in-prompt. Owners are unaffected.
+        if job["user"] == ALLOWED_USER:
+            guest_settings, run_cwd = None, None
+        else:
+            guest_settings, manifest = scope.write_guest_settings()
+            run_cwd = str(scope.loki_dir())
+            prompt = t("guest_scope_note", manifest=manifest[:2500]) + prompt
+
         t0 = time.time()
-        res = brain.run_claude(prompt, resume_id, perm_mode)
+        res = brain.run_claude(prompt, resume_id, perm_mode,
+                               settings_file=guest_settings, cwd=run_cwd)
 
         # stale --resume → retry once with a fresh session
         if res["error"] and resume_id and res["reason"] == "error":
-            res = brain.run_claude(prompt, None, perm_mode)
+            res = brain.run_claude(prompt, None, perm_mode,
+                                   settings_file=guest_settings, cwd=run_cwd)
             if not res["error"]:
                 res["text"] = t("fresh_restart") + res["text"]
 
@@ -197,7 +249,8 @@ def on_member_joined(body, event, logger):
         name = channel_id
     try:
         dm = app.client.conversations_open(users=ALLOWED_USER)["channel"]["id"]
-        app.client.chat_postMessage(channel=dm, text=t("invited", name=name))
+        app.client.chat_postMessage(
+            channel=dm, text=t("invited", name=name, cid=channel_id))
     except Exception:
         log.exception("join-notify DM failed")
 
@@ -208,10 +261,13 @@ def _dispatch(body, event, is_mention: bool) -> None:
         return
     user = event.get("user")
     is_owner = user == ALLOWED_USER
+    channel = event.get("channel")
     if not is_owner:
-        # Non-owner: only via @mention in a channel (never DM), and always
-        # forced into read-only plan mode regardless of this PC's write config.
+        # Non-owner: only via @mention in a channel (never DM), always forced
+        # into read-only plan mode, and silently ignored in blocked channels.
         if not is_mention or not user:
+            return
+        if _is_blocked(channel):
             return
     permission_mode = config.PERMISSION_MODE if is_owner else "plan"
 
@@ -226,8 +282,28 @@ def _dispatch(body, event, is_mention: bool) -> None:
     if not text:
         return
 
-    channel = event["channel"]
     thread = event.get("thread_ts") or event["ts"]
+
+    # owner commands: !block / !unblock a channel, !summary <channel_id>
+    if is_owner:
+        m = _BLOCK_RE.match(text)
+        if m:
+            _set_blocked(m.group(1), True)
+            _post(channel, thread, t("blocked", cid=m.group(1)))
+            return
+        m = _UNBLOCK_RE.match(text)
+        if m:
+            _set_blocked(m.group(1), False)
+            _post(channel, thread, t("unblocked", cid=m.group(1)))
+            return
+        m = _SUMMARY_RE.match(text)
+        if m:
+            jobs.JOBS.put({"channel": channel, "thread": thread,
+                           "text": t("summary_request"), "user": user,
+                           "event_id": event_id, "in_thread": False,
+                           "is_mention": False, "permission_mode": "plan",
+                           "target_channel": m.group(1)})
+            return
 
     if is_owner and text.lower() in ("!stop", "!cancel", "중지", "!중지"):
         _post(channel, thread,
@@ -300,6 +376,7 @@ def readonly_selftest() -> None:
 # ─────────────────────────── entrypoint ───────────────────────────
 def run() -> None:
     global BOT_USER_ID
+    scope.ensure_manifest()        # guest allowlist template on first boot
     readonly_selftest()
     try:
         BOT_USER_ID = app.client.auth_test().get("user_id")

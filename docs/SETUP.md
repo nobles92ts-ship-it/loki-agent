@@ -13,6 +13,19 @@ Full walkthrough for getting Loki running. The short version lives in the [READM
 
 > Loki's brain is the official `claude` CLI under **your login** — the bot consumes your subscription's rolling usage limits, nothing else.
 
+## Before you start — choose your permission posture
+
+Decide what Loki should be allowed to do; the wizard sets it up accordingly.
+
+| You want | During setup | After setup |
+|---|---|---|
+| **Solo, safe** — analysis, lookups, summaries | keep permission mode `plan` (default) | nothing |
+| **Solo, full power** — write files, run commands from your DM | answer `y` to write mode (`bypassPermissions`) — read [SECURITY.md](SECURITY.md) first | nothing |
+| **Team channels** — colleagues may query it | either mode (guests are independent of it) | `/invite @Loki` to channels, then list shared folders in `<WORK_DIR>\loki\loki.md` |
+| **Team + one trusted pipeline** — named users may trigger a fixed heavy command | as above | wire a `!command` for named users — [EXAMPLES.md](EXAMPLES.md) |
+
+Whatever you pick: **guests are always read-only** and see **only** the paths you put in `loki.md` (created empty on first boot — sharing is opt-in, folder by folder). You can silence any channel with `!block <channel_id>` from your DM. The full tier table lives in the [README](../README.md#permissions--who-can-do-what).
+
 ## 1. Create the Slack app
 
 1. <https://api.slack.com/apps> → **Create New App** → **From an app manifest**
@@ -71,6 +84,8 @@ Background / autostart options:
 | `Could not find the claude executable` | `claude` not on PATH for the worker | set `CLAUDE_CMD=` full path in `.env` |
 | Boot exits with `Missing required setting: …` | `.env` incomplete | fill the key it names (fail-closed by design) |
 | Channel mention does nothing | bot not in the channel, or scopes changed without reinstall | `/invite @Loki`; after any manifest scope change: **api.slack.com → your app → Install App → Reinstall** |
+| Guest gets "outside the shared scope" | the path isn't in the guest allowlist | add the folder to `<WORK_DIR>\loki\loki.md` under `## Allowed paths` (applies immediately) |
+| Guests get no reply in one channel | channel was `!block`ed | DM the bot `!unblock <channel_id>` |
 | Replies stop mid-conversation / duplicated | **two Loki processes on the same app** — Socket Mode splits events between connections | keep exactly one instance per Slack app |
 | `⏱️ Timed out` | request bigger than `TIMEOUT_SEC` | raise `TIMEOUT_SEC` or split the ask |
 | Subscription limit message | your Claude plan's rolling window is exhausted | wait for the reset; consider `CLAUDE_MODEL=sonnet` |

@@ -66,6 +66,11 @@ if ($writeEnv) {
     $mode = Read-Host "  Enable full write mode? (y/N)"
     $permission = 'plan'
     if ($mode -match '^[yY]') { $permission = 'bypassPermissions' }
+    Write-Host ""
+    Write-Host "Guest access (channels):" -ForegroundColor Cyan
+    Write-Host "  Anyone in a channel Loki joins can query it - read-only, and ONLY within"
+    Write-Host "  paths you list in <WORK_DIR>\loki\loki.md (created empty on first run;"
+    Write-Host "  empty list = guests see nothing). Silence a channel: DM '!block <channel_id>'."
 
     $envBody = @(
         "SLACK_BOT_TOKEN=$bot",

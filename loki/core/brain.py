@@ -35,8 +35,14 @@ def stop_current() -> bool:
 
 
 def run_claude(prompt: str, resume_id: str | None,
-               permission_mode: str | None = None) -> dict:
-    """Run claude headless. Returns {text, session_id, error(bool), reason}."""
+               permission_mode: str | None = None,
+               settings_file: str | None = None,
+               cwd: str | None = None) -> dict:
+    """Run claude headless. Returns {text, session_id, error(bool), reason}.
+
+    settings_file: per-request settings JSON (e.g. the guest allowlist's deny
+    rules — too long for the command line, cmd.exe caps it at 8191 chars).
+    cwd: working directory override (guests are pinned to the loki folder)."""
     mode = permission_mode or config.PERMISSION_MODE
     cmd = [
         config.CLAUDE_CMD, "-p",
@@ -48,6 +54,8 @@ def run_claude(prompt: str, resume_id: str | None,
         cmd += ["--model", config.MODEL]
     if resume_id:
         cmd += ["--resume", resume_id]
+    if settings_file:
+        cmd += ["--settings", settings_file]
     # prompt goes via stdin (robust for the .cmd wrapper + spaces/unicode), not as an arg
 
     # Auth via the on-disk login (~/.claude), NOT auth inherited from a parent
@@ -60,7 +68,7 @@ def run_claude(prompt: str, resume_id: str | None,
              if os.name == "nt" else 0)
     try:
         proc = subprocess.Popen(
-            cmd, cwd=config.WORK_DIR,
+            cmd, cwd=cwd or config.WORK_DIR,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             encoding="utf-8", errors="replace", env=env,
