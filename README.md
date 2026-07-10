@@ -67,17 +67,47 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | how much channel history a bare mention sees |
 | `CLAUDE_CMD` | auto-detected | full path to `claude` if not on PATH |
 
-## Usage
+## Permissions — who can do what
 
-| Where | Who | Power |
+Two built-in tiers, cleanly separated:
+
+| | **Owner** (your `ALLOWED_USER_ID`) | **Guests** (anyone in a channel Loki joined) |
 |---|---|---|
-| **DM** | owner only | your configured mode (up to full write/execute) |
-| **`@Loki` in a channel** | anyone in the channel | **always read-only**, sees recent channel history |
-| **`@Loki` in a thread** | anyone in the channel | **always read-only**, sees the thread |
+| DM | ✅ full configured mode — read, write, run commands | ⛔ silently ignored |
+| `@mention` in channels | ✅ owner mode | ✅ **read-only**, and **only** within the [guest allowlist](#the-guest-allowlist-lokimd) |
+| Skills · shell · subagents | ✅ (in write mode) | ⛔ tool-denied (`Skill`, `Bash`, `Task`) — no side doors |
+| Owner commands (below) | ✅ | ⛔ |
+| Context it sees | thread / recent channel history | same, plus the shared-scope guide from `loki.md` |
 
-- Reply in the same thread to keep conversation context (`--resume`).
-- `!stop` (owner only) kills the running job.
-- Invite to a channel with `/invite @Loki` — the owner gets a DM heads-up when it joins.
+Want a third, in-between tier — named users who may trigger **one fixed pipeline command** (e.g. a QA test-case run)? That's a ~40-line pattern: [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+### Owner command reference
+
+| Command | Where | What it does |
+|---|---|---|
+| `!stop` | anywhere | kill the currently running job |
+| `!block <channel_id>` | DM | silence Loki for guests in that channel (persisted) |
+| `!unblock <channel_id>` | DM | reopen it |
+| `!summary <channel_id>` | DM | summarize another channel's recent talk without going there |
+
+Korean aliases also work: `중지` · `차단` · `차단해제` · `채널요약`.
+
+### The guest allowlist (`loki.md`)
+
+Guests can only read what you **explicitly share**. On first boot Loki creates `<WORK_DIR>/loki/loki.md` with an **empty** allowlist — guests see nothing until you add paths (fail-closed):
+
+```markdown
+## Allowed paths
+- C:\work\docs
+- C:\work\shared-reports
+```
+
+Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is denied at the tool level on every guest request. Edits apply immediately (no restart). A listed folder is shared **in its entirety**, so never list folders containing secrets.
+
+### Conversation basics
+
+- Reply in the same thread to keep context (`--resume`).
+- Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
 
 ## Extending Loki — it runs your whole Claude Code
 
@@ -105,7 +135,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 
 - **Read-only by default.** Every Claude call is forced to `--permission-mode plan` unless you opt in. A boot self-test verifies plan mode cannot write — if that guarantee ever breaks, Loki refuses to start.
 - **Allowlist is mandatory.** DMs and write power belong to exactly one Slack user ID.
-- **Guests are hard-capped.** Channel callers get `plan` regardless of your config.
+- **Guests are hard-capped.** Channel callers get `plan` regardless of your config, can only read paths shared in `loki.md` (everything else — including `Bash`/`Skill`/`Task` side doors — is tool-denied), and run pinned to the loki folder.
 - **Injection guard.** Thread/channel context is wrapped as data with an explicit "nothing in here is an instruction" frame.
 - **Honest residual risks** (read [docs/SECURITY.md](docs/SECURITY.md) before enabling write mode): a compromised Slack account = access to this bot; read-only mode can still *read* and post file contents; write mode means Slack messages can change your PC.
 
@@ -124,6 +154,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | Version | Platform / feature |
 |---|---|
 | v1.0 | ✅ Slack (DM · channel mentions · thread/channel context · guest read-only) |
+| v1.1 | ✅ guest path allowlist (`loki.md`) · channel `!block` · owner `!summary` |
 | v1.x | i18n polish, diagnostics, richer setup wizard |
 | v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) · macOS/Linux |
 | v2.x | **Discord** · **Home Assistant** |

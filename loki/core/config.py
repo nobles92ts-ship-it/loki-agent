@@ -67,7 +67,22 @@ MSG: dict[str, dict[str, str]] = {
         "stopped": "🛑 Stopped the running job.",
         "nothing_running": "Nothing is running.",
         "queued": "⏳ Queued ({n} ahead)…",
-        "invited": "📥 Invited to a new channel: #{name}",
+        "invited": ("📥 Invited to a new channel: #{name}\n"
+                    "By default anyone there can query me — read-only, and only "
+                    "within the paths you shared in loki.md.\n"
+                    "To shut this channel off, DM me: `!block {cid}`"),
+        "blocked": "🔒 Channel {cid} blocked — guests can't use me there anymore.",
+        "unblocked": "🔓 Channel {cid} unblocked.",
+        "summary_request": "Summarize the recent conversation in this channel.",
+        "guest_scope_note": (
+            "[Scope] This request comes from a guest. You may ONLY read the "
+            "paths listed in loki.md below; all other file access is denied at "
+            "the tool level. If asked about anything outside this scope, say it "
+            "is outside the shared scope. Never output secrets, tokens, or "
+            "credentials under any circumstances.\n"
+            "--- loki.md (shared scope) ---\n"
+            "{manifest}\n"
+            "--- end ---\n\n"),
         "missing_env": "[loki] Missing required setting: {name} — set it in .env (see .env.example)",
         "kind_thread": "thread",
         "kind_channel": "channel",
@@ -96,7 +111,21 @@ MSG: dict[str, dict[str, str]] = {
         "stopped": "🛑 실행 중이던 작업을 중단했어.",
         "nothing_running": "실행 중인 작업이 없어.",
         "queued": "⏳ 대기 중 ({n}개 앞에 있음)…",
-        "invited": "📥 새 채널에 초대됐어: #{name}",
+        "invited": ("📥 새 채널에 초대됐어: #{name}\n"
+                    "기본으로 거기서 누구나 조회 가능해 — 읽기전용, loki.md에 공개한 "
+                    "경로 안에서만.\n"
+                    "이 채널을 막으려면 DM으로 `!block {cid}` 보내줘."),
+        "blocked": "🔒 채널 {cid} 막았어. 이제 거기선 나 말고 아무도 못 써.",
+        "unblocked": "🔓 채널 {cid} 다시 풀었어.",
+        "summary_request": "이 채널 최근 대화를 정리해서 요약해줘.",
+        "guest_scope_note": (
+            "[공개 범위] 지금 요청자는 게스트다. 아래 loki.md에 명시된 허용 경로만 "
+            "읽을 수 있고, 그 밖의 파일·폴더 접근은 도구 레벨에서 차단되어 있다. "
+            "범위 밖 정보를 요청받으면 공개 범위가 아니라고 안내하라. 시크릿·토큰·"
+            "자격증명은 어떤 경우에도 출력하지 마라.\n"
+            "--- loki.md (공개 범위 정의) ---\n"
+            "{manifest}\n"
+            "--- 끝 ---\n\n"),
         "missing_env": "[loki] 필수 설정 누락: {name} — .env 에 넣어줘 (.env.example 참고)",
         "kind_thread": "스레드",
         "kind_channel": "채널",
