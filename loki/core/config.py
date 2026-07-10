@@ -90,6 +90,8 @@ MSG: dict[str, dict[str, str]] = {
                        "• `!schedule once YYYY-MM-DD HH:MM <prompt>`\n"
                        "• `!schedule list` · `!schedule remove s1`"),
         "learn_saved": "🧠 Noted — {n} item(s) in the learnings inbox (state/learnings.md).",
+        "rate_limited": ("🚦 You've hit the guest limit ({n}/hour). "
+                         "Try again in ~{m} min."),
         "invited": ("📥 Invited to a new channel: #{name}\n"
                     "By default anyone there can query me — read-only, and only "
                     "within the paths you shared in loki.md.\n"
@@ -157,6 +159,8 @@ MSG: dict[str, dict[str, str]] = {
                        "• `!schedule once YYYY-MM-DD HH:MM <할 일>`\n"
                        "• `!schedule list` · `!schedule remove s1`"),
         "learn_saved": "🧠 기록했어 — 인박스에 {n}건 대기 중 (state/learnings.md).",
+        "rate_limited": ("🚦 게스트 사용 한도에 도달했어 (시간당 {n}회). "
+                         "약 {m}분 후 다시 시도해줘."),
         "invited": ("📥 새 채널에 초대됐어: #{name}\n"
                     "기본으로 거기서 누구나 조회 가능해 — 읽기전용, loki.md에 공개한 "
                     "경로 안에서만.\n"
@@ -220,6 +224,16 @@ TIMEOUT_SEC = int(os.environ.get("TIMEOUT_SEC", "300"))
 JOB_CONCURRENCY = max(1, int(os.environ.get("JOB_CONCURRENCY", "2")))
 MODEL = os.environ.get("CLAUDE_MODEL", "").strip()
 SELFTEST_ON_BOOT = os.environ.get("SELFTEST_ON_BOOT", "1") == "1"
+
+# Dedicated Claude account: point the spawned `claude` at its own config dir so
+# it authenticates as a specific account, independent of your terminal login.
+# On Windows/Linux this isolates `.credentials.json` per directory. Empty =
+# use the default (~/.claude) account. See docs/SETUP.md.
+CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+
+# Guest throttle: max requests per rolling hour per non-owner user (protects
+# your subscription limits). 0 = unlimited. Owners are never throttled.
+GUEST_RATE_PER_HOUR = max(0, int(os.environ.get("GUEST_RATE_PER_HOUR", "10")))
 
 # permission mode: "plan" = read-only (safe default) · "bypassPermissions" = full
 # write/execute on this machine. Set via .env (CLAUDE_PERMISSION_MODE).

@@ -67,20 +67,31 @@ if ($writeEnv) {
     $permission = 'plan'
     if ($mode -match '^[yY]') { $permission = 'bypassPermissions' }
     Write-Host ""
+    Write-Host "Dedicated Claude account (optional):" -ForegroundColor Cyan
+    Write-Host "  By default Loki uses whatever account 'claude' is logged into."
+    Write-Host "  To give Loki its OWN account (e.g. keep work and personal separate),"
+    Write-Host "  enter a config dir here, then log into it ONCE after setup:"
+    Write-Host "     `$env:CLAUDE_CONFIG_DIR='<that dir>'; claude   (run /login inside)"
+    $acctDir = Read-Host "  CLAUDE_CONFIG_DIR (blank = use the default account)"
+    Write-Host ""
     Write-Host "Guest access (channels):" -ForegroundColor Cyan
     Write-Host "  Anyone in a channel Loki joins can query it - read-only, and ONLY within"
     Write-Host "  paths you list in <WORK_DIR>\loki\loki.md (created empty on first run;"
     Write-Host "  empty list = guests see nothing). Silence a channel: DM '!block <channel_id>'."
+    $rate = Read-Host "  Max guest requests per hour, 0 = unlimited (default 10)"
+    if ($rate -notmatch '^\d+$') { $rate = '10' }
 
-    $envBody = @(
+    $lines = @(
         "SLACK_BOT_TOKEN=$bot",
         "SLACK_APP_TOKEN=$app",
         "ALLOWED_USER_ID=$owner",
         "WORK_DIR=$workDir",
         "CLAUDE_PERMISSION_MODE=$permission",
+        "GUEST_RATE_PER_HOUR=$rate",
         "LOKI_LANG=$lang"
-    ) -join "`n"
-    [IO.File]::WriteAllText($envPath, $envBody + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    )
+    if ($acctDir) { $lines += "CLAUDE_CONFIG_DIR=$acctDir" }
+    [IO.File]::WriteAllText($envPath, ($lines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "[OK] .env written"
 }
 

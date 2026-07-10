@@ -64,17 +64,30 @@ if [ "$write_env" = 1 ]; then
     permission=plan
     case "$mode" in y|Y) permission=bypassPermissions ;; esac
     echo ""
+    echo "Dedicated Claude account (optional):"
+    echo "  By default Loki uses whatever account 'claude' is logged into."
+    echo "  To give Loki its OWN account (e.g. keep work and personal separate),"
+    echo "  enter a config dir here, then log into it ONCE after setup:"
+    echo "     CLAUDE_CONFIG_DIR=<that dir> claude   (run /login inside)"
+    read -r -p "  CLAUDE_CONFIG_DIR (blank = use the default account): " acctdir
+    echo ""
     echo "Guest access (channels):"
     echo "  Anyone in a channel Loki joins can query it - read-only, and ONLY within"
     echo "  paths you list in <WORK_DIR>/loki/loki.md (created empty on first run;"
     echo "  empty list = guests see nothing). Silence a channel: DM '!block <channel_id>'."
-    printf '%s\n' \
-        "SLACK_BOT_TOKEN=$bot" \
-        "SLACK_APP_TOKEN=$apptok" \
-        "ALLOWED_USER_ID=$owner" \
-        "WORK_DIR=$workdir" \
-        "CLAUDE_PERMISSION_MODE=$permission" \
-        "LOKI_LANG=$lang" > .env
+    read -r -p "  Max guest requests per hour, 0 = unlimited (default 10): " rate
+    case "$rate" in ''|*[!0-9]*) rate=10 ;; esac
+    {
+        printf '%s\n' \
+            "SLACK_BOT_TOKEN=$bot" \
+            "SLACK_APP_TOKEN=$apptok" \
+            "ALLOWED_USER_ID=$owner" \
+            "WORK_DIR=$workdir" \
+            "CLAUDE_PERMISSION_MODE=$permission" \
+            "GUEST_RATE_PER_HOUR=$rate" \
+            "LOKI_LANG=$lang"
+        [ -n "$acctdir" ] && printf 'CLAUDE_CONFIG_DIR=%s\n' "$acctdir"
+    } > .env
     echo "[OK] .env written"
 fi
 
