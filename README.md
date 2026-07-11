@@ -148,6 +148,8 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 
 - Reply in the same thread to keep context (`--resume`).
 - Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
+- **Drop a screenshot** in your DM (caption optional) and Loki reads it and analyzes it. If a reply produces a local file (report, chart), Loki attaches it. (owner DMs)
+- Replies **render as Slack formatting** — Claude's Markdown (headers, bold, links, bullets, tables) is auto-converted to Slack's mrkdwn.
 
 ## Extending Loki — it runs your whole Claude Code
 
@@ -199,6 +201,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.1 | ✅ guest path allowlist (`loki.md`) · channel `!block` · owner `!summary` |
 | v1.2 | ✅ macOS/Linux · scheduler (`!schedule`) · parallel jobs + `!jobs`/`!cancel` · `!usage` · `!learn` · test suite + CI |
 | v1.3 | ✅ dedicated account (`CLAUDE_CONFIG_DIR`) · guest rate limiting · private-command hook (`try_handle`) |
+| v1.4 | ✅ Markdown → Slack mrkdwn rendering · image input (screenshot → analysis) · file output |
 | v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |

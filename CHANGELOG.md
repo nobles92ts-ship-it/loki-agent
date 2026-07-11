@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.4.0] 2026-07-11
+
+Replies that render, and images.
+
+- **Markdown → Slack mrkdwn** — Claude answers in CommonMark, so headers, `**bold**`, `[links](url)`, and `- bullets` used to show their raw punctuation in Slack. Loki now converts them to Slack's dialect (`*bold*`, `<url|text>`, `•`, `~strike~`, headers → bold, tables → monospaced code block). Code spans and fences are protected; conversion is applied only to model output, never the bot's own strings.
+- **Image input** — drop a screenshot in your DM (caption optional) and Loki downloads it and hands the local path to Claude to analyze. Owner-only; 20 MB cap.
+- **File output** — when the owner's reply references a local output file (`.html/.png/.pdf/.csv/...` under `WORK_DIR`, size-capped, max 4), Loki uploads it to the thread.
+- **Tests** — +12 mrkdwn cases (46 total), green on the CI matrix.
+
 ## [v1.3.0] 2026-07-11
 
 Account control, abuse control, and private commands.

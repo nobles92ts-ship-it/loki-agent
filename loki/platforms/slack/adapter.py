@@ -12,12 +12,14 @@ import re
 import sys
 import threading
 import time
+import urllib.request
+from pathlib import Path
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import (brain, config, dedup, jobs, learn, ratelimit, scheduler,
-                     scope, usage)
+from ...core import (brain, config, dedup, jobs, learn, mrkdwn, ratelimit,
+                     scheduler, scope, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -39,6 +41,16 @@ CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
 SELFTEST_FILE = config.STATE / "selftest.json"
 BLOCKED_FILE = config.STATE / "blocked_channels.json"
+IMG_DIR = config.STATE / "img"             # downloaded inbound image attachments
+
+MAX_FILE_BYTES = 20 * 1024 * 1024          # cap per download / upload (20 MB)
+MAX_UPLOADS = 4                            # max files auto-uploaded per reply
+# absolute paths (Windows or POSIX) with an output-ish extension → candidates
+# for outbound upload when the owner's reply references them.
+_PATH_RE = re.compile(
+    r'(?:[A-Za-z]:\\|/)[^\s"\'`<>|]+?'
+    r'\.(?:html?|png|jpe?g|gif|svg|pdf|csv|md|txt|json|xlsx?|docx?)',
+    re.IGNORECASE)
 
 app = App(token=BOT_TOKEN)
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
@@ -145,6 +157,67 @@ def _channel_context(channel: str) -> str:
     return "\n".join(lines)[:10000]
 
 
+# ─────────────────────────── image attachments ───────────────────────────
+def _download_images(image_files: list) -> list:
+    """Download inbound image attachments (owner-only, pre-filtered) to
+    state/img. Returns local absolute paths for Claude to read."""
+    if not image_files:
+        return []
+    IMG_DIR.mkdir(exist_ok=True)
+    paths = []
+    for i, f in enumerate(image_files):
+        url = f.get("url")
+        if not url:
+            continue
+        name = re.sub(r"[^\w.\-]", "_", f.get("name") or f"image{i}")[-60:]
+        dest = IMG_DIR / f"{int(time.time())}_{i}_{name}"
+        try:
+            req = urllib.request.Request(
+                url, headers={"Authorization": f"Bearer {BOT_TOKEN}"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = r.read(MAX_FILE_BYTES + 1)
+            if len(data) > MAX_FILE_BYTES:
+                log.warning("attachment too large, skipped: %s", name)
+                continue
+            dest.write_bytes(data)
+            paths.append(str(dest))
+        except Exception:
+            log.exception("image download failed")
+    return paths
+
+
+def _upload_reply_files(job: dict, raw_text: str) -> None:
+    """Owner-only: upload local output files the reply references by absolute
+    path (whitelisted extensions, under WORK_DIR, size-capped, deduped)."""
+    work = Path(config.WORK_DIR).resolve()
+    seen: set = set()
+    uploaded = 0
+    for m in _PATH_RE.finditer(raw_text or ""):
+        if uploaded >= MAX_UPLOADS:
+            break
+        try:
+            rp = Path(m.group(0)).resolve()
+        except Exception:
+            continue
+        if rp in seen:
+            continue
+        seen.add(rp)
+        try:
+            rp.relative_to(work)             # must live under WORK_DIR
+        except ValueError:
+            continue
+        try:
+            if not rp.is_file() or rp.stat().st_size > MAX_FILE_BYTES:
+                continue
+            app.client.files_upload_v2(
+                channel=job["channel"], thread_ts=job.get("thread"),
+                file=str(rp), title=rp.name,
+                initial_comment=t("file_uploaded", name=rp.name))
+            uploaded += 1
+        except Exception:
+            log.exception("file upload failed")
+
+
 # ─────────────────────────── job handling ───────────────────────────
 def _handle(job: dict) -> None:
     thread = job.get("thread")     # None for scheduled fires → top-level DM post
@@ -169,6 +242,10 @@ def _handle(job: dict) -> None:
         else:
             context, kind, scope_label = "", "kind_thread", ""
         prompt = build_prompt(context, job["text"], kind, scope_label)
+        img_paths = _download_images(job.get("image_files") or [])
+        if img_paths:
+            prompt = t("image_note", n=len(img_paths),
+                       paths="\n".join(f"- {p}" for p in img_paths)) + prompt
         with jobs.sess_lock:
             resume_id = jobs.sessions.get(thread) if thread else None
         perm_mode = job["permission_mode"]
@@ -215,7 +292,11 @@ def _handle(job: dict) -> None:
             _safe_post(job, t("quota"))
             time.sleep(30)
             return
-        _safe_post(job, job.get("reply_prefix", "") + res["text"])
+        # Convert Claude's Markdown to Slack mrkdwn so it renders cleanly.
+        _safe_post(job, job.get("reply_prefix", "") + mrkdwn.to_mrkdwn(res["text"]))
+        # Owner only: attach any local output files the reply references.
+        if job.get("user") == ALLOWED_USER:
+            _upload_reply_files(job, res["text"])
     finally:
         notice.cancel()
 
@@ -362,7 +443,8 @@ def on_member_joined(body, event, logger):
 
 def _dispatch(body, event, is_mention: bool) -> None:
     # Stay FAST (filter + enqueue) so Bolt acks within Slack's 3s window.
-    if event.get("subtype") or event.get("bot_id"):
+    subtype = event.get("subtype")
+    if (subtype and subtype != "file_share") or event.get("bot_id"):
         return
     user = event.get("user")
     is_owner = user == ALLOWED_USER
@@ -384,8 +466,19 @@ def _dispatch(body, event, is_mention: bool) -> None:
 
     text = (_strip_mention(event.get("text") or "") if is_mention
             else (event.get("text") or "").strip())
-    if not text:
+
+    # Image attachments (owner only): downloaded in the worker, read in-prompt.
+    image_files = []
+    if is_owner:
+        for f in (event.get("files") or []):
+            if (f.get("mimetype") or "").startswith("image/"):
+                url = f.get("url_private_download") or f.get("url_private")
+                if url:
+                    image_files.append({"url": url, "name": f.get("name") or "image"})
+    if not text and not image_files:
         return
+    if not text:
+        text = t("image_default")          # image dropped with no caption
 
     thread = event.get("thread_ts") or event["ts"]
 
@@ -472,7 +565,8 @@ def _dispatch(body, event, is_mention: bool) -> None:
                  "user": user, "event_id": event_id,
                  "in_thread": bool(event.get("thread_ts")),
                  "is_mention": is_mention, "permission_mode": permission_mode,
-                 "kind": "owner" if is_owner else "guest"})
+                 "kind": "owner" if is_owner else "guest",
+                 "image_files": image_files})
 
 
 def _post(channel: str, thread: str, text: str) -> None:

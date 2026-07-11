@@ -144,6 +144,7 @@ Background / autostart — macOS / Linux:
 | `Could not find the claude executable` | `claude` not on PATH for the worker | set `CLAUDE_CMD=` full path in `.env` |
 | Boot exits with `Missing required setting: …` | `.env` incomplete | fill the key it names (fail-closed by design) |
 | Channel mention does nothing | bot not in the channel, or scopes changed without reinstall | `/invite @Loki`; after any manifest scope change: **api.slack.com → your app → Install App → Reinstall** |
+| Image analysis / file upload does nothing | `files:read` / `files:write` scopes missing (upgraded from an older version) | **api.slack.com → your app → Install App → Reinstall** to grant the new scopes |
 | Guest gets "outside the shared scope" | the path isn't in the guest allowlist | add the folder to `<WORK_DIR>\loki\loki.md` under `## Allowed paths` (applies immediately) |
 | Guests get no reply in one channel | channel was `!block`ed | DM the bot `!unblock <channel_id>` |
 | Replies stop mid-conversation / duplicated | **two Loki processes on the same app** — Socket Mode splits events between connections | keep exactly one instance per Slack app |
