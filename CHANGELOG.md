@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.4.1] 2026-07-11
+
+- **Fix**: guest rate-limit "try again in N min" could report 61 at the top of the window (max should be 60) — ceiling math corrected. Was also a timing-dependent CI flake.
+
 ## [v1.4.0] 2026-07-11
 
 Replies that render, and images.
