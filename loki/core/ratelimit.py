@@ -31,7 +31,8 @@ def check(user_id: str) -> tuple[bool, int]:
         data = _load()
         hits = [t for t in data.get(user_id, []) if now - t < WINDOW_SEC]
         if len(hits) >= limit:
-            retry = int((WINDOW_SEC - (now - hits[0])) // 60) + 1
+            remaining = WINDOW_SEC - (now - hits[0])  # until the oldest ages out
+            retry = max(1, (int(remaining) + 59) // 60)  # ceil to minutes (≤60)
             data[user_id] = hits                      # prune, don't count this one
             _save(data)
             return False, retry
