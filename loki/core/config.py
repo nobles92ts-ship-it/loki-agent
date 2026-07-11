@@ -92,6 +92,10 @@ MSG: dict[str, dict[str, str]] = {
         "learn_saved": "🧠 Noted — {n} item(s) in the learnings inbox (state/learnings.md).",
         "rate_limited": ("🚦 You've hit the guest limit ({n}/hour). "
                          "Try again in ~{m} min."),
+        "image_default": "Analyze the attached image(s).",
+        "image_note": "📎 Read the {n} attached image(s) at these local paths:\n{paths}\n\n",
+        "image_dl_fail": "⚠️ Couldn't download an attached image.",
+        "file_uploaded": "📤 {name}",
         "invited": ("📥 Invited to a new channel: #{name}\n"
                     "By default anyone there can query me — read-only, and only "
                     "within the paths you shared in loki.md.\n"
@@ -161,6 +165,10 @@ MSG: dict[str, dict[str, str]] = {
         "learn_saved": "🧠 기록했어 — 인박스에 {n}건 대기 중 (state/learnings.md).",
         "rate_limited": ("🚦 게스트 사용 한도에 도달했어 (시간당 {n}회). "
                          "약 {m}분 후 다시 시도해줘."),
+        "image_default": "첨부한 이미지를 분석해줘.",
+        "image_note": "📎 아래 로컬 경로의 이미지 {n}장을 열어서 봐:\n{paths}\n\n",
+        "image_dl_fail": "⚠️ 첨부 이미지 다운로드에 실패했어.",
+        "file_uploaded": "📤 {name}",
         "invited": ("📥 새 채널에 초대됐어: #{name}\n"
                     "기본으로 거기서 누구나 조회 가능해 — 읽기전용, loki.md에 공개한 "
                     "경로 안에서만.\n"

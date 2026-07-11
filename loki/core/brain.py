@@ -65,10 +65,11 @@ def run_claude(prompt: str, resume_id: str | None,
     # Claude Code session — strip its session/auth env so claude -p logs in fresh.
     env = {k: v for k, v in os.environ.items()
            if not (k.startswith("CLAUDE_CODE") or k == "CLAUDECODE"
-                   or k.startswith("ANTHROPIC_"))}
+                   or k == "CLAUDE_CONFIG_DIR" or k.startswith("ANTHROPIC_"))}
     env["PYTHONUTF8"] = "1"
-    # Dedicated account: pin claude to its own config dir (its own login),
-    # authoritative over anything inherited from the parent environment.
+    # Dedicated account: pin claude to its own config dir (its own login).
+    # Stripped above then set only from config, so config is authoritative over
+    # whatever the parent environment happened to carry.
     if config.CLAUDE_CONFIG_DIR:
         env["CLAUDE_CONFIG_DIR"] = config.CLAUDE_CONFIG_DIR
     spawn_kw: dict = {}

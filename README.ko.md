@@ -146,6 +146,8 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 
 - 같은 스레드에 답장하면 맥락 유지(`--resume`).
 - 채널 초대는 `/invite @Loki` — 오너 DM으로 알림 + 원탭 `!block` 힌트가 온다.
+- **스크린샷을 DM에 던지면** Loki가 읽어서 분석한다(설명 없이 이미지만 보내도 됨). 답변 과정에서 파일(리포트·차트)이 생기면 스레드에 첨부한다. (오너 DM)
+- 답변은 **Slack 서식으로 렌더링** — Claude의 마크다운(헤더·볼드·링크·불릿·표)을 Slack mrkdwn으로 자동 변환.
 
 ## Loki 확장하기 — 네 Claude Code 전체가 돌아간다
 
@@ -197,6 +199,7 @@ Loki → ✅ 완료 — 시트 확인해줘.
 | v1.1 | ✅ 게스트 경로 allowlist(`loki.md`) · 채널 `!block` · 오너 `!summary` |
 | v1.2 | ✅ macOS/Linux · 스케줄러(`!schedule`) · 병렬 작업+`!jobs`/`!cancel` · `!usage` · `!learn` · 테스트+CI |
 | v1.3 | ✅ 전용 계정(`CLAUDE_CONFIG_DIR`) · 게스트 rate limit · 사설 명령 훅(`try_handle`) |
+| v1.4 | ✅ 마크다운 → Slack mrkdwn 렌더링 · 이미지 입력(스샷→분석) · 파일 출력 |
 | v2.0 | **Telegram** 어댑터 (`platforms/base` 계약 첫 검증) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
