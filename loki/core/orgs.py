@@ -118,11 +118,20 @@ def _parse(text: str) -> dict:
     }
 
 
+def _invalidate() -> None:
+    """Force a re-read on the next access — called after our own writes, so
+    correctness never depends on filesystem timestamp resolution (Windows
+    mtime ticks are coarse enough for same-tick create→edit sequences)."""
+    with _lock:
+        _cache["stamp"] = None
+
+
 def _load() -> None:
-    """Re-read org files when anything changed (mtime stamp)."""
+    """Re-read org files when anything changed (mtime+size stamp)."""
     try:
         files = sorted(p for p in orgs_dir().glob("*.md") if p.is_file())
-        stamp = tuple((p.name, p.stat().st_mtime_ns) for p in files)
+        stamp = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size)
+                      for p in files)
     except Exception:
         files, stamp = [], ()
     with _lock:
@@ -211,6 +220,7 @@ def create(name: str) -> str:
         return "exists"
     f.write_text(ORG_TEMPLATE.format(name=name, rate=config.GUEST_RATE_PER_HOUR),
                  encoding="utf-8")
+    _invalidate()
     log.info("org created: %s", f)
     return "created"
 
@@ -258,6 +268,7 @@ def _edit_section(name: str, section: str, add: str | None = None,
         changed = True
     if changed:
         f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        _invalidate()
     return changed
 
 

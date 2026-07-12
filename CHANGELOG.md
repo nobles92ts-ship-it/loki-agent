@@ -1,5 +1,9 @@
 # Changelog
 
+## [v1.6.1] 2026-07-13
+
+- **Fix**: the org cache could serve stale data when a create/edit sequence landed within one filesystem-timestamp tick (coarse Windows mtime) — e.g. a double `!org add` of the same user right after `!org create` could bypass dedup. CRUD writes now invalidate the cache explicitly (no timestamp reliance for our own writes) and the change stamp includes file size. Caught by CI on the Windows runners.
+
 ## [v1.6.0] 2026-07-13
 
 Per-company tiers.
