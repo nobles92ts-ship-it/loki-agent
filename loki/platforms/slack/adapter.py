@@ -18,8 +18,8 @@ from pathlib import Path
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import (brain, config, dedup, jobs, learn, mrkdwn, ratelimit,
-                     scheduler, scope, usage)
+from ...core import (autolisten, brain, config, dedup, jobs, learn, mrkdwn,
+                     ratelimit, scheduler, scope, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -64,6 +64,9 @@ _JOBS_RE = re.compile(r"^!(?:jobs|작업목록)$", re.IGNORECASE)
 _CANCEL_RE = re.compile(r"^!(?:cancel|취소)\s+(j\d+)$", re.IGNORECASE)
 _SCHED_RE = re.compile(r"^!(?:schedule|예약)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 _LEARN_RE = re.compile(r"^!(?:learn|학습)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+_LISTEN_RE = re.compile(r"^!(?:listen|청취)$", re.IGNORECASE)
+_UNLISTEN_RE = re.compile(r"^!(?:unlisten|청취해제)$", re.IGNORECASE)
+_LISTENING_RE = re.compile(r"^!(?:listening|청취목록)$", re.IGNORECASE)
 _names: dict[str, str] = {}         # user id -> display name cache
 
 
@@ -96,6 +99,18 @@ def _set_blocked(channel_id: str, blocked: bool) -> None:
 def _is_blocked(channel_id: str) -> bool:
     with _blocked_lock:
         return channel_id in BLOCKED_CHANNELS
+
+
+# Auto-listen zones live in core.autolisten (owner opt-in via !listen); the
+# adapter only formats the listing and wires the commands.
+def _fmt_listening() -> str:
+    chans, threads = autolisten.snapshot()
+    if not chans and not threads:
+        return t("listening_none")
+    lines = [t("listening_header", c=len(chans), t=len(threads))]
+    lines += [f"• #{c}" for c in chans]
+    lines += [f"• 🧵 {th}" for th in threads]
+    return "\n".join(lines)
 
 
 def _strip_mention(text: str) -> str:
@@ -412,9 +427,20 @@ def _fire_schedule(s: dict) -> None:
 # ─────────────────────────── Slack event handling ───────────────────────────
 @app.event("message")
 def on_message(body, event, logger):
-    if event.get("channel_type") != "im":     # message events → DM only
+    if event.get("channel_type") == "im":     # DMs → owner conversation
+        _dispatch(body, event, is_mention=False)
         return
-    _dispatch(body, event, is_mention=False)
+    # Channel/group message: engage only inside a registered auto-listen zone,
+    # and never for @mentions (those arrive via app_mention → no double-handling).
+    if event.get("bot_id"):
+        return
+    if BOT_USER_ID and f"<@{BOT_USER_ID}>" in (event.get("text") or ""):
+        return
+    channel = event.get("channel")
+    if _is_blocked(channel):
+        return
+    if autolisten.is_zone(channel, event.get("thread_ts")):
+        _dispatch(body, event, is_mention=False, auto_listen=True)
 
 
 @app.event("app_mention")
@@ -441,7 +467,7 @@ def on_member_joined(body, event, logger):
         log.exception("join-notify DM failed")
 
 
-def _dispatch(body, event, is_mention: bool) -> None:
+def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
     # Stay FAST (filter + enqueue) so Bolt acks within Slack's 3s window.
     subtype = event.get("subtype")
     if (subtype and subtype != "file_share") or event.get("bot_id"):
@@ -450,9 +476,10 @@ def _dispatch(body, event, is_mention: bool) -> None:
     is_owner = user == ALLOWED_USER
     channel = event.get("channel")
     if not is_owner:
-        # Non-owner: only via @mention in a channel (never DM), always forced
-        # into read-only plan mode, and silently ignored in blocked channels.
-        if not is_mention or not user:
+        # Non-owner: only via @mention OR inside an auto-listen zone (never a
+        # bare DM), always forced into read-only plan mode, and silently ignored
+        # in blocked channels.
+        if not (is_mention or auto_listen) or not user:
             return
         if _is_blocked(channel):
             return
@@ -537,6 +564,15 @@ def _dispatch(body, event, is_mention: bool) -> None:
         if m:
             _post(channel, thread,
                   t("learn_saved", n=learn.capture(m.group(1))))
+            return
+        if _LISTEN_RE.match(text):
+            _post(channel, thread, t(autolisten.add(channel, event.get("thread_ts"))))
+            return
+        if _UNLISTEN_RE.match(text):
+            _post(channel, thread, t(autolisten.remove(channel, event.get("thread_ts"))))
+            return
+        if _LISTENING_RE.match(text):
+            _post(channel, thread, _fmt_listening())
             return
 
     if is_owner and text.lower() in ("!stop", "!cancel", "중지", "!중지"):

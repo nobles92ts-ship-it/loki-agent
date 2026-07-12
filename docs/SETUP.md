@@ -134,6 +134,9 @@ Background / autostart — macOS / Linux:
 - `/invite @Loki` into a channel → the owner gets a DM heads-up.
 - Anyone in the channel can `@Loki <question>` — **always read-only**, regardless of your `.env`.
 - Bare channel mentions see the channel's recent history (default 7 days / 120 messages); thread mentions see the thread.
+- **Mention-free zones**: the owner can say `@Loki !listen` in a thread (that thread) or at channel top level (whole channel) — everyone there then talks to Loki without a mention. `!unlisten` stops, `!listening` lists. Guests keep their read-only + rate-limit guardrails.
+
+> **Upgrading from ≤ v1.4.x?** Auto-listen needs two extra bot events. In your app config ([api.slack.com/apps](https://api.slack.com/apps) → your app) open **Event Subscriptions → Subscribe to bot events** and add `message.channels` and `message.groups`, then Save. No new OAuth scopes, so there's no reinstall prompt. Apps created from the current manifest already have them.
 
 ## Troubleshooting
 

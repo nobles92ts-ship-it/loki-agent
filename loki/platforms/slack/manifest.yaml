@@ -50,6 +50,8 @@ settings:
       - message.im
       - app_mention
       - member_joined_channel
+      - message.channels
+      - message.groups
   interactivity:
     is_enabled: false
   org_deploy_enabled: false
