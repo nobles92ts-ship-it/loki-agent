@@ -65,12 +65,8 @@ def ensure_manifest() -> None:
         config.log.info("guest manifest template created at %s", manifest_file())
 
 
-def guest_scope() -> tuple[list[str], str]:
-    """Parse the manifest → (deny pattern list, manifest text for the prompt)."""
-    try:
-        manifest = manifest_file().read_text(encoding="utf-8")
-    except Exception:
-        manifest = ""
+def _denies_for(manifest: str) -> list[str]:
+    """Manifest text → deny pattern list (shared by guest and org tiers)."""
     work = str(Path(config.WORK_DIR).resolve()).replace("\\", "/")
     allowed = {"loki"}                        # the manifest folder is always visible
     for m in _PATH_LINE_RE.finditer(manifest):
@@ -86,6 +82,11 @@ def guest_scope() -> tuple[list[str], str]:
     pats = ["Skill", "Bash", "Task",
             f"Read({_CLAUDE_HOME_GLOB})", f"Grep({_CLAUDE_HOME_GLOB})",
             f"Glob({_CLAUDE_HOME_GLOB})"]
+    # the org registry is owner-only: member lists and other companies' scopes
+    # must never be readable even though the loki folder itself is visible
+    # (deny beats allow; an org sees its own manifest via the prompt instead).
+    orgs_glob = f"{work}/loki/orgs/**"
+    pats += [f"Read({orgs_glob})", f"Grep({orgs_glob})", f"Glob({orgs_glob})"]
     for root in ("C:/Users/**", "C:/ProgramData/**", "C:/Windows/**",
                  "D:/**", "E:/**"):
         pats += [f"Read({root})", f"Grep({root})", f"Glob({root})"]
@@ -100,14 +101,44 @@ def guest_scope() -> tuple[list[str], str]:
         glob = (f"{work}/{name}/**" if os.path.isdir(os.path.join(work, name))
                 else f"{work}/{name}")
         pats += [f"Read({glob})", f"Grep({glob})", f"Glob({glob})"]
-    return pats, manifest
+    return pats
+
+
+def guest_scope() -> tuple[list[str], str]:
+    """Global (unaffiliated-guest) scope from loki.md → (denies, manifest)."""
+    try:
+        manifest = manifest_file().read_text(encoding="utf-8")
+    except Exception:
+        manifest = ""
+    return _denies_for(manifest), manifest
+
+
+def org_scope(org: str) -> tuple[list[str], str]:
+    """An organization's scope from loki/orgs/<org>.md (fail-closed: a missing
+    or unreadable file shares nothing beyond the loki folder)."""
+    try:
+        manifest = (loki_dir() / "orgs" / f"{org}.md").read_text(encoding="utf-8")
+    except Exception:
+        manifest = ""
+    return _denies_for(manifest), manifest
+
+
+def write_scope_settings(org: str | None) -> tuple[str, str]:
+    """Build denies for the caller's tier and persist the per-request settings
+    JSON. ``org=None`` → global guest (loki.md).
+
+    Returns (settings_file_path, manifest_text)."""
+    denies, manifest = org_scope(org) if org else guest_scope()
+    if org:
+        safe = re.sub(r"[^\w가-힣-]", "_", org)
+        settings = config.STATE / f"org_settings_{safe}.json"
+    else:
+        settings = guest_settings_file()
+    settings.write_text(
+        json.dumps({"permissions": {"deny": denies}}), encoding="utf-8")
+    return str(settings), manifest
 
 
 def write_guest_settings() -> tuple[str, str]:
-    """Build denies, persist the per-request settings JSON.
-
-    Returns (settings_file_path, manifest_text)."""
-    denies, manifest = guest_scope()
-    guest_settings_file().write_text(
-        json.dumps({"permissions": {"deny": denies}}), encoding="utf-8")
-    return str(guest_settings_file()), manifest
+    """Back-compat wrapper — the unaffiliated-guest tier."""
+    return write_scope_settings(None)

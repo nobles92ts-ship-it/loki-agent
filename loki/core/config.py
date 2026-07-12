@@ -99,7 +99,8 @@ MSG: dict[str, dict[str, str]] = {
         "invited": ("📥 Invited to a new channel: #{name}\n"
                     "By default anyone there can query me — read-only, and only "
                     "within the paths you shared in loki.md.\n"
-                    "To shut this channel off, DM me: `!block {cid}`"),
+                    "To shut this channel off, DM me: `!block {cid}` — or bind "
+                    "it to an org's scope: `!org bind <org> {cid}`"),
         "blocked": "🔒 Channel {cid} blocked — guests can't use me there anymore.",
         "unblocked": "🔓 Channel {cid} unblocked.",
         "listen_thread": "🎧 Now listening to this thread — no mention needed. (stop: `!unlisten`)",
@@ -110,6 +111,34 @@ MSG: dict[str, dict[str, str]] = {
         "unlisten_none": "I'm not auto-listening here.",
         "listening_none": "Not auto-listening anywhere. Say `!listen` in a thread or channel to start.",
         "listening_header": "🎧 Auto-listening — {c} channel(s) · {t} thread(s):",
+        "org_help": ("Org commands (owner):\n"
+                     "• `!org create <name>` · `!org list` · `!org info <name>`\n"
+                     "• `!org add <name> @user…` · `!org remove <name> @user`\n"
+                     "• `!org bind <name> [channel_id]` · `!org unbind <name> [channel_id]`\n"
+                     "• `!org allow <name> <command>` · `!org deny <name> <command>`\n"
+                     "Permissions live in `loki/orgs/<name>.md` — edit the file any time."),
+        "org_created": "🏢 Org *{name}* created — open its shared paths in `{path}`.",
+        "org_exists": "Org *{name}* already exists.",
+        "org_badname": "Org names: letters/digits/Korean/`-`/`_`, up to 32 chars.",
+        "org_not_found": "Org *{name}*? Not found — check `!org list`.",
+        "org_added": "👥 Added {n} member(s) to *{org}*.",
+        "org_add_none": "Mention who: `!org add {name} @user` (or a raw U… id).",
+        "org_member_removed": "👋 Removed from *{org}*.",
+        "org_bound": "🔗 Channel {cid} bound to *{org}* — everyone there now uses its scope.",
+        "org_bind_need_id": "Run it inside the target channel or pass an id: `!org bind {name} C…`.",
+        "org_unbound": "⛓️ Channel unbound from *{org}*.",
+        "org_cmd_allowed": "⚡ *{org}* may now trigger `!{cmd}`.",
+        "org_cmd_denied": "🚫 `!{cmd}` removed from *{org}*.",
+        "org_nochange": "No change — already like that.",
+        "org_list_header": "🏢 Orgs ({n}):",
+        "org_list_line": "• *{name}* — {m} member(s) · {c} channel(s) · {k} command(s) · rate {r}/h",
+        "org_list_empty": "No orgs yet — `!org create <name>` to add one.",
+        "org_info": ("🏢 *{name}* — `{path}`\n"
+                     "• members ({n}): {members}\n"
+                     "• channels: {channels}\n"
+                     "• commands: {commands}\n"
+                     "• rate: {rate}/h"),
+        "usage_by_org": "by org: {s}",
         "summary_request": "Summarize the recent conversation in this channel.",
         "guest_scope_note": (
             "[Scope] This request comes from a guest. You may ONLY read the "
@@ -180,7 +209,8 @@ MSG: dict[str, dict[str, str]] = {
         "invited": ("📥 새 채널에 초대됐어: #{name}\n"
                     "기본으로 거기서 누구나 조회 가능해 — 읽기전용, loki.md에 공개한 "
                     "경로 안에서만.\n"
-                    "이 채널을 막으려면 DM으로 `!block {cid}` 보내줘."),
+                    "이 채널을 막으려면 DM으로 `!block {cid}`, 조직 범위로 열려면 "
+                    "`!org bind <조직> {cid}` 보내줘."),
         "blocked": "🔒 채널 {cid} 막았어. 이제 거기선 나 말고 아무도 못 써.",
         "unblocked": "🔓 채널 {cid} 다시 풀었어.",
         "listen_thread": "🎧 이제 이 스레드는 멘션 없이 들을게. (해제: `!unlisten`)",
@@ -191,6 +221,34 @@ MSG: dict[str, dict[str, str]] = {
         "unlisten_none": "여긴 자동청취 중이 아니야.",
         "listening_none": "자동청취 중인 곳이 없어. 스레드나 채널에서 `!listen` 해줘.",
         "listening_header": "🎧 자동청취 중 — 채널 {c}개 · 스레드 {t}개:",
+        "org_help": ("조직 명령 (오너):\n"
+                     "• `!org create <이름>` · `!org list` · `!org info <이름>`\n"
+                     "• `!org add <이름> @사람…` · `!org remove <이름> @사람`\n"
+                     "• `!org bind <이름> [채널ID]` · `!org unbind <이름> [채널ID]`\n"
+                     "• `!org allow <이름> <명령>` · `!org deny <이름> <명령>`\n"
+                     "권한 정의는 `loki/orgs/<이름>.md` — 언제든 파일을 직접 수정해도 돼."),
+        "org_created": "🏢 조직 *{name}* 만들었어 — 공유 경로는 `{path}` 에서 열어줘.",
+        "org_exists": "조직 *{name}* 은 이미 있어.",
+        "org_badname": "조직 이름은 영문/숫자/한글/`-`/`_` 32자까지야.",
+        "org_not_found": "조직 *{name}*? 없어 — `!org list` 로 확인해줘.",
+        "org_added": "👥 *{org}* 에 {n}명 추가했어.",
+        "org_add_none": "누굴 추가할지 멘션해줘: `!org add {name} @사람` (U… ID 직접 입력도 가능).",
+        "org_member_removed": "👋 *{org}* 에서 뺐어.",
+        "org_bound": "🔗 채널 {cid} 를 *{org}* 에 바인딩했어 — 이제 거기 전원이 이 조직 범위로 동작해.",
+        "org_bind_need_id": "대상 채널 안에서 실행하거나 ID를 줘: `!org bind {name} C…`.",
+        "org_unbound": "⛓️ *{org}* 에서 채널 바인딩을 해제했어.",
+        "org_cmd_allowed": "⚡ *{org}* 가 이제 `!{cmd}` 를 쓸 수 있어.",
+        "org_cmd_denied": "🚫 *{org}* 에서 `!{cmd}` 뺐어.",
+        "org_nochange": "변경 없음 — 이미 그 상태야.",
+        "org_list_header": "🏢 조직 {n}개:",
+        "org_list_line": "• *{name}* — 멤버 {m} · 채널 {c} · 명령 {k} · rate {r}/h",
+        "org_list_empty": "조직이 아직 없어 — `!org create <이름>` 으로 만들어줘.",
+        "org_info": ("🏢 *{name}* — `{path}`\n"
+                     "• 멤버 ({n}): {members}\n"
+                     "• 채널: {channels}\n"
+                     "• 명령: {commands}\n"
+                     "• rate: {rate}/h"),
+        "usage_by_org": "조직별: {s}",
         "summary_request": "이 채널 최근 대화를 정리해서 요약해줘.",
         "guest_scope_note": (
             "[공개 범위] 지금 요청자는 게스트다. 아래 loki.md에 명시된 허용 경로만 "

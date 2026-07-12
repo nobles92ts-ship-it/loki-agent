@@ -138,6 +138,16 @@ Background / autostart — macOS / Linux:
 
 > **Upgrading from ≤ v1.4.x?** Auto-listen needs two extra bot events. In your app config ([api.slack.com/apps](https://api.slack.com/apps) → your app) open **Event Subscriptions → Subscribe to bot events** and add `message.channels` and `message.groups`, then Save. No new OAuth scopes, so there's no reinstall prompt. Apps created from the current manifest already have them.
 
+### Per-company access (organizations)
+
+Sharing Loki with another company — a Slack Connect channel or external folks in your workspace? Give them their own tier instead of the global guest share:
+
+1. `!org create acme` → creates `WORK_DIR/loki/orgs/acme.md`
+2. Edit that file's `## Allowed paths` — the folders *only this org* may read
+3. Connect the people: `!org bind acme` inside their shared channel (whole channel), and/or `!org add acme @person` (individuals)
+
+Optional: `- rate: 20` under `## Settings` for a per-org hourly cap, `!org allow acme <command>` to grant a fixed pipeline. Everything lives in the org's markdown file — edit it any time, no restart. See the README's Organizations section for the resolution rules.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

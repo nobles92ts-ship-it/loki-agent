@@ -7,13 +7,14 @@ calls `try_handle(ctx)` on every message BEFORE normal dispatch.
 
 Contract:
   try_handle(ctx: dict) -> bool
-    ctx = {app, event, text, user, channel, thread, is_owner, post}
+    ctx = {app, event, text, user, channel, thread, is_owner, org, post}
     return True  → you handled it; the adapter stops here
     return False → not yours; normal dispatch continues
 
 Rules of thumb (see docs/EXAMPLES.md):
-  • Gate to the owner or a NAMED trusted-user allowlist from .env —
-    never pattern-match permission out of free text.
+  • Gate to the owner, a NAMED trusted-user allowlist from .env, or an
+    organization's Commands grant (`orgs.allows_command(ctx.get("org"), "…")`)
+    — never pattern-match permission out of free text.
   • Run long jobs on your own daemon thread so you don't block the queue.
   • Post progress with ctx["post"](channel, thread, text).
 """
@@ -24,7 +25,7 @@ import re
 import threading
 import time
 
-from ...core import brain, config
+from ...core import brain, config, orgs
 
 # Named trusted users (comma-separated Slack ids in .env) — never free-text matched.
 REPORT_USERS = {u.strip() for u in os.environ.get("REPORT_USERS", "").split(",") if u.strip()}
@@ -37,7 +38,9 @@ def try_handle(ctx: dict) -> bool:
     if not m:
         return False
     post, channel, thread = ctx["post"], ctx["channel"], ctx["thread"]
-    if not (ctx["is_owner"] or ctx["user"] in REPORT_USERS):
+    # owner, named users, or any org granted 'report' via `!org allow <org> report`
+    if not (ctx["is_owner"] or ctx["user"] in REPORT_USERS
+            or orgs.allows_command(ctx.get("org"), "report")):
         post(channel, thread, "⛔ You're not allowed to run !report.")
         return True
     if not _lock.acquire(blocking=False):

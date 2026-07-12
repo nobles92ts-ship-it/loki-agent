@@ -18,9 +18,12 @@ PRUNE_AT_BYTES = 1_000_000
 _lock = threading.Lock()
 
 
-def record(kind: str, user: str, ok: bool, dur_s: float, reason: str = "ok") -> None:
+def record(kind: str, user: str, ok: bool, dur_s: float, reason: str = "ok",
+           org: str | None = None) -> None:
     row = {"ts": time.time(), "kind": kind or "?", "user": user or "?",
            "ok": bool(ok), "dur": round(float(dur_s), 1), "reason": reason}
+    if org:
+        row["org"] = org
     with _lock:
         try:
             if (USAGE_FILE.exists()
@@ -63,6 +66,7 @@ def summarize(days: int = 7) -> dict:
     rows = [r for r in _read_rows() if r.get("ts", 0) >= cutoff]
     by_user: dict[str, int] = {}
     by_kind: dict[str, int] = {}
+    by_org: dict[str, int] = {}
     ok = fail = 0
     dur_total = 0.0
     today = {"total": 0, "dur": 0.0}
@@ -70,6 +74,8 @@ def summarize(days: int = 7) -> dict:
         (by_user.__setitem__(r.get("user", "?"),
                              by_user.get(r.get("user", "?"), 0) + 1))
         by_kind[r.get("kind", "?")] = by_kind.get(r.get("kind", "?"), 0) + 1
+        if r.get("org"):
+            by_org[r["org"]] = by_org.get(r["org"], 0) + 1
         ok += 1 if r.get("ok") else 0
         fail += 0 if r.get("ok") else 1
         dur_total += float(r.get("dur", 0))
@@ -81,5 +87,6 @@ def summarize(days: int = 7) -> dict:
         "dur_total": dur_total,
         "by_user": sorted(by_user.items(), key=lambda kv: -kv[1]),
         "by_kind": sorted(by_kind.items(), key=lambda kv: -kv[1]),
+        "by_org": sorted(by_org.items(), key=lambda kv: -kv[1]),
         "today": today,
     }
