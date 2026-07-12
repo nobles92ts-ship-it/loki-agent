@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.6.0] 2026-07-13
+
+Per-company tiers.
+
+- **Organizations** — when several companies/teams share one Loki, give each its own tier: `!org create <name>` makes `loki/orgs/<name>.md` (one file = one org, human-editable, applied next request, fail-closed) holding **members**, **bound channels**, **readable folders**, **allowed `!commands`** and a **rate override**. Onboard a whole Slack Connect channel with `!org bind <name> [channel]`, individuals with `!org add <name> @user`; grant fixed pipelines with `!org allow <name> <command>`. Resolution per request: owner → explicit member → bound channel → unaffiliated guest (global `loki.md`, unchanged).
+- **Isolation & posture** — orgs never change the permission mode (members stay read-only); each org reads only *its* folders; the org registry itself (`loki/orgs/`) is tool-denied to everyone but the owner; `!usage` now reports by org; the private-command hook receives `ctx["org"]` and `orgs.allows_command()` for gating (see the updated example).
+- **Compatibility** — no `orgs/` folder → behavior identical to v1.5.x. No new Slack scopes or events.
+- **Tests** — +13 org cases (66 total), green on the CI matrix.
+
 ## [v1.5.0] 2026-07-13
 
 Talk without the @.
