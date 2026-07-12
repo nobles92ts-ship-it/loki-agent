@@ -19,7 +19,7 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from ...core import (autolisten, brain, config, dedup, jobs, learn, mrkdwn,
-                     ratelimit, scheduler, scope, usage)
+                     orgs, ratelimit, scheduler, scope, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -67,6 +67,11 @@ _LEARN_RE = re.compile(r"^!(?:learn|학습)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 _LISTEN_RE = re.compile(r"^!(?:listen|청취)$", re.IGNORECASE)
 _UNLISTEN_RE = re.compile(r"^!(?:unlisten|청취해제)$", re.IGNORECASE)
 _LISTENING_RE = re.compile(r"^!(?:listening|청취목록)$", re.IGNORECASE)
+_ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
+_ORG_SUB_RE = re.compile(
+    r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
+    re.IGNORECASE | re.DOTALL)
+_MENTION_ID_RE = re.compile(r"<@([UW][A-Z0-9]+)>")
 _names: dict[str, str] = {}         # user id -> display name cache
 
 
@@ -271,7 +276,8 @@ def _handle(job: dict) -> None:
         if job["user"] == ALLOWED_USER:
             guest_settings, run_cwd = None, None
         else:
-            guest_settings, manifest = scope.write_guest_settings()
+            # org members get their org's manifest; unaffiliated → loki.md
+            guest_settings, manifest = scope.write_scope_settings(job.get("org"))
             run_cwd = str(scope.loki_dir())
             prompt = t("guest_scope_note", manifest=manifest[:2500]) + prompt
 
@@ -298,7 +304,8 @@ def _handle(job: dict) -> None:
 
         dur = time.time() - t0
         usage.record(job.get("kind", "?"), job.get("user", "?"),
-                     res["reason"] == "ok", dur, res["reason"])
+                     res["reason"] == "ok", dur, res["reason"],
+                     org=job.get("org"))
         log.info("job id=%s kind=%s user=%s ev=%s reason=%s dur=%ds chars=%d",
                  job.get("id"), job.get("kind"), job["user"], job["event_id"],
                  res["reason"], int(dur), len(res["text"]))
@@ -366,6 +373,9 @@ def _fmt_usage(days: int) -> str:
     if data["by_kind"]:
         lines.append(t("usage_by_kind",
                        s=" · ".join(f"{k} {n}" for k, n in data["by_kind"])))
+    if data.get("by_org"):
+        lines.append(t("usage_by_org",
+                       s=" · ".join(f"{o} {n}" for o, n in data["by_org"])))
     return "\n".join(lines)
 
 
@@ -410,6 +420,83 @@ def _schedule_cmd(channel: str, arg: str) -> str:
     item = scheduler.add(spec, channel)
     nxt = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["next_fire"]))
     return t("sched_added", id=item["id"], spec=scheduler.spec_str(item), next=nxt)
+
+
+def _org_cmd(arg: str, raw_text: str, channel: str) -> str:
+    """Owner `!org …` — thin command layer; the org's .md file stays the SSoT.
+    Mentions are read from the RAW event text (channel mentions get stripped
+    from the command text before dispatch)."""
+    m = _ORG_SUB_RE.match((arg or "").strip())
+    if not m:
+        return t("org_help")
+    sub, rest = m.group(1).lower(), (m.group(2) or "").strip()
+    if sub == "list":
+        ns = orgs.names()
+        if not ns:
+            return t("org_list_empty")
+        lines = [t("org_list_header", n=len(ns))]
+        for n in ns:
+            o = orgs.get(n) or {}
+            lines.append(t("org_list_line", name=n,
+                           m=len(o.get("members", [])),
+                           c=len(o.get("channels", [])),
+                           k=len(o.get("commands", [])),
+                           r=o.get("rate") if o.get("rate") is not None
+                             else config.GUEST_RATE_PER_HOUR))
+        return "\n".join(lines)
+    toks = rest.split()
+    name = toks[0] if toks else ""
+    if sub == "create":
+        r = orgs.create(name)
+        return (t("org_created", name=name, path=orgs.org_file(name))
+                if r == "created" else t("org_" + r, name=name))
+    if not name or orgs.get(name) is None:
+        return t("org_not_found", name=name or "?")
+    if sub == "info":
+        o = orgs.get(name)
+        mem = ", ".join(o["members"][:8]) + (" …" if len(o["members"]) > 8 else "")
+        return t("org_info", name=name, path=orgs.org_file(name),
+                 n=len(o["members"]), members=mem or "-",
+                 channels=", ".join(o["channels"]) or "-",
+                 commands=", ".join(o["commands"]) or "-",
+                 rate=o["rate"] if o["rate"] is not None
+                      else config.GUEST_RATE_PER_HOUR)
+    if sub in ("add", "remove"):
+        ids = [i for i in _MENTION_ID_RE.findall(raw_text or "")
+               if i != BOT_USER_ID]
+        ids += [tk for tk in toks[1:] if re.fullmatch(r"[UW][A-Z0-9]{4,}", tk)]
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            return t("org_add_none", name=name)
+        if sub == "add":
+            n = sum(1 for i in ids
+                    if orgs.add_member(name, i, _user_name(i) or ""))
+            return t("org_added", n=n, org=name) if n else t("org_nochange")
+        n = sum(1 for i in ids if orgs.remove_member(name, i))
+        return t("org_member_removed", org=name) if n else t("org_nochange")
+    if sub in ("bind", "unbind"):
+        cid = next((tk for tk in toks[1:]
+                    if re.fullmatch(r"[CG][A-Z0-9]{4,}", tk)), None)
+        if not cid:
+            if channel and channel[0] in "CG":   # typed inside the target channel
+                cid = channel
+            else:
+                return t("org_bind_need_id", name=name)
+        if sub == "bind":
+            return (t("org_bound", cid=cid, org=name) if orgs.bind(name, cid)
+                    else t("org_nochange"))
+        return (t("org_unbound", org=name) if orgs.unbind(name, cid)
+                else t("org_nochange"))
+    if sub in ("allow", "deny"):
+        cmd = toks[1].lstrip("!").lower() if len(toks) > 1 else ""
+        if not cmd:
+            return t("org_help")
+        if sub == "allow":
+            return (t("org_cmd_allowed", org=name, cmd=cmd)
+                    if orgs.allow_command(name, cmd) else t("org_nochange"))
+        return (t("org_cmd_denied", org=name, cmd=cmd)
+                if orgs.deny_command(name, cmd) else t("org_nochange"))
+    return t("org_help")
 
 
 def _fire_schedule(s: dict) -> None:
@@ -509,6 +596,9 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
 
     thread = event.get("thread_ts") or event["ts"]
 
+    # Organization tier — None means unaffiliated (global loki.md guest scope).
+    org = None if is_owner else orgs.resolve(user, channel)
+
     # Private, workspace-specific commands (gitignored extension point). Runs for
     # owner + named trusted users; bypasses the guest queue/throttle by design.
     if _private is not None:
@@ -516,7 +606,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
             if _private.try_handle({
                     "app": app, "event": event, "text": text, "user": user,
                     "channel": channel, "thread": thread, "is_owner": is_owner,
-                    "post": _post}):
+                    "org": org, "post": _post}):
                 return
         except Exception:
             log.exception("private command handler failed")
@@ -574,6 +664,11 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
         if _LISTENING_RE.match(text):
             _post(channel, thread, _fmt_listening())
             return
+        m = _ORG_RE.match(text)
+        if m:
+            _post(channel, thread,
+                  _org_cmd(m.group(1), event.get("text") or "", channel))
+            return
 
     if is_owner and text.lower() in ("!stop", "!cancel", "중지", "!중지"):
         n = jobs.cancel_all()
@@ -582,11 +677,15 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
         return
 
     # Guest throttle — protect the owner's subscription (owners never limited).
+    # An org's Settings.rate overrides the global GUEST_RATE_PER_HOUR.
     if not is_owner:
-        allowed, retry = ratelimit.check(user)
+        limit = orgs.rate(org)
+        allowed, retry = ratelimit.check(user, limit=limit)
         if not allowed:
             _post(channel, thread,
-                  t("rate_limited", n=config.GUEST_RATE_PER_HOUR, m=retry))
+                  t("rate_limited",
+                    n=limit if limit is not None else config.GUEST_RATE_PER_HOUR,
+                    m=retry))
             return
 
     qsize = jobs.JOBS.qsize()
@@ -602,7 +701,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                  "in_thread": bool(event.get("thread_ts")),
                  "is_mention": is_mention, "permission_mode": permission_mode,
                  "kind": "owner" if is_owner else "guest",
-                 "image_files": image_files})
+                 "org": org, "image_files": image_files})
 
 
 def _post(channel: str, thread: str, text: str) -> None:

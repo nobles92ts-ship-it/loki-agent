@@ -19,11 +19,13 @@ WINDOW_SEC = 3600
 _lock = threading.Lock()
 
 
-def check(user_id: str) -> tuple[bool, int]:
+def check(user_id: str, limit: int | None = None) -> tuple[bool, int]:
     """Record an attempt. Returns (allowed, retry_after_minutes).
 
-    Disabled (allow-all) when GUEST_RATE_PER_HOUR is 0."""
-    limit = config.GUEST_RATE_PER_HOUR
+    ``limit`` overrides GUEST_RATE_PER_HOUR (an org's per-hour rate);
+    the effective limit 0 disables throttling (allow-all)."""
+    if limit is None:
+        limit = config.GUEST_RATE_PER_HOUR
     if limit <= 0 or not user_id:
         return True, 0
     now = time.time()

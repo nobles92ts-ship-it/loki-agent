@@ -105,7 +105,21 @@ Two built-in tiers, cleanly separated:
 | Owner commands (below) | ✅ | ⛔ |
 | Context it sees | thread / recent channel history | same, plus the shared-scope guide from `loki.md` |
 
-Want a third, in-between tier — named users who may trigger **one fixed pipeline command** (e.g. a QA test-case run)? That's a ~40-line pattern: [docs/EXAMPLES.md](docs/EXAMPLES.md).
+Need per-company tiers on top? That's built in — **organizations**:
+
+### Organizations — per-company scope, commands and rate
+
+When several companies/teams share your Loki (a Slack Connect channel, external folks invited to your workspace), give each one its own tier. **One markdown file = one org** (`<WORK_DIR>/loki/orgs/<name>.md`) holding its members, bound channels, readable folders, allowed `!commands` and rate limit — human-editable, applied on the next request, fail-closed.
+
+```
+!org create acme                  # makes loki/orgs/acme.md
+# open its folders: edit "## Allowed paths" in that file
+!org bind acme C0SHARED           # everyone in that channel = acme  (or run `!org bind acme` inside it)
+!org add acme @alice              # explicit member — keeps her tier in any channel
+!org allow acme report            # let acme trigger your !report pipeline
+```
+
+Resolution per request: **owner → explicit member → bound channel → unaffiliated guest** (global `loki.md`). Orgs never change the permission mode — members stay read-only like any guest; they just read *their* folders instead of the global share, may trigger *their* granted commands, and burn *their* rate budget (`!usage` reports by org). Custom wiring beyond that is still the private-command hook: [docs/EXAMPLES.md](docs/EXAMPLES.md).
 
 ### Owner command reference
 
@@ -123,8 +137,9 @@ Want a third, in-between tier — named users who may trigger **one fixed pipeli
 | `!listen` | thread / channel | auto-listen zone: in a thread → that thread, at channel top level → the whole channel. Loki then answers there **without a mention** |
 | `!unlisten` | thread / channel | stop auto-listening there (most specific zone first) |
 | `!listening` | anywhere | list active auto-listen zones |
+| `!org …` | anywhere | manage [organizations](#organizations--per-company-scope-commands-and-rate): `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
