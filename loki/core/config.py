@@ -102,6 +102,14 @@ MSG: dict[str, dict[str, str]] = {
                     "To shut this channel off, DM me: `!block {cid}`"),
         "blocked": "🔒 Channel {cid} blocked — guests can't use me there anymore.",
         "unblocked": "🔓 Channel {cid} unblocked.",
+        "listen_thread": "🎧 Now listening to this thread — no mention needed. (stop: `!unlisten`)",
+        "listen_channel": ("🎧 Now listening to this whole channel — I'll answer everyone "
+                           "here without a mention. (stop: `!unlisten`)"),
+        "listen_already": "Already auto-listening here.",
+        "unlisten_ok": "🔇 Stopped auto-listening here — mention me again to talk.",
+        "unlisten_none": "I'm not auto-listening here.",
+        "listening_none": "Not auto-listening anywhere. Say `!listen` in a thread or channel to start.",
+        "listening_header": "🎧 Auto-listening — {c} channel(s) · {t} thread(s):",
         "summary_request": "Summarize the recent conversation in this channel.",
         "guest_scope_note": (
             "[Scope] This request comes from a guest. You may ONLY read the "
@@ -175,6 +183,14 @@ MSG: dict[str, dict[str, str]] = {
                     "이 채널을 막으려면 DM으로 `!block {cid}` 보내줘."),
         "blocked": "🔒 채널 {cid} 막았어. 이제 거기선 나 말고 아무도 못 써.",
         "unblocked": "🔓 채널 {cid} 다시 풀었어.",
+        "listen_thread": "🎧 이제 이 스레드는 멘션 없이 들을게. (해제: `!unlisten`)",
+        "listen_channel": ("🎧 이제 이 채널 전체를 멘션 없이 들을게 — 여기선 모두의 "
+                           "메시지에 반응해. (해제: `!unlisten`)"),
+        "listen_already": "여긴 이미 자동청취 중이야.",
+        "unlisten_ok": "🔇 여기 자동청취 해제했어 — 다시 부르려면 멘션해줘.",
+        "unlisten_none": "여긴 자동청취 중이 아니야.",
+        "listening_none": "자동청취 중인 곳이 없어. 스레드나 채널에서 `!listen` 해줘.",
+        "listening_header": "🎧 자동청취 중 — 채널 {c}개 · 스레드 {t}개:",
         "summary_request": "이 채널 최근 대화를 정리해서 요약해줘.",
         "guest_scope_note": (
             "[공개 범위] 지금 요청자는 게스트다. 아래 loki.md에 명시된 허용 경로만 "

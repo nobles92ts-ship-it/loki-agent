@@ -24,7 +24,7 @@ Slack DM / @mention
 - **Subscription-powered** — the brain is the official `claude` CLI using your Pro/Max login. No `sk-…` key, no metered bill at the end of the month.
 - **Actually local** — Loki works on *your* PC: summarize a folder, fix a script, run a build. You decide how much power it gets.
 - **Guests stay read-only** — anyone may `@Loki` in a channel, but guest calls are hard-forced into read-only mode. Only the owner's DM can write/execute.
-- **Context aware** — mention it in a thread and it reads the thread; mention it bare in a channel and it reads recent channel history. All context is wrapped as *data, not instructions* (prompt-injection guard).
+- **Context aware** — mention it in a thread and it reads the thread; mention it bare in a channel and it reads recent channel history. All context is wrapped as *data, not instructions* (prompt-injection guard). Or skip the mention entirely: `!listen` turns a thread/channel into an auto-listen zone.
 - **Built to be extended** — `loki/core` is platform-agnostic; Slack is just the first adapter ([roadmap](#roadmap)).
 
 ## Quick start
@@ -120,8 +120,11 @@ Want a third, in-between tier — named users who may trigger **one fixed pipeli
 | `!block <channel_id>` | DM | silence Loki for guests in that channel (persisted) |
 | `!unblock <channel_id>` | DM | reopen it |
 | `!summary <channel_id>` | DM | summarize another channel's recent talk without going there |
+| `!listen` | thread / channel | auto-listen zone: in a thread → that thread, at channel top level → the whole channel. Loki then answers there **without a mention** |
+| `!unlisten` | thread / channel | stop auto-listening there (most specific zone first) |
+| `!listening` | anywhere | list active auto-listen zones |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
@@ -131,6 +134,10 @@ Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` 
 !schedule once 2026-12-24 18:00 remind me to wrap up early
 !schedule list · !schedule remove s1
 ```
+
+**Auto-listen zones** — tired of @mentioning Loki in your working thread? Say `@Loki !listen` once in a thread (or at channel top level for the whole channel) and everyone there talks to Loki mention-free, like a group DM. Permissions don't change: guests stay read-only + rate-limited, `!block` overrides a zone, mentions aren't double-answered, and bot messages are ignored (no loops). Heads-up: in a zone **every** human message becomes a Claude call — prefer work threads over busy channels.
+
+> Requires the `message.channels` + `message.groups` bot events (no new OAuth scopes). Apps created from this repo's manifest already have them; if you installed before v1.5.0, add the two events under **Event Subscriptions → Subscribe to bot events** in your app config — no reinstall prompt.
 
 ### The guest allowlist (`loki.md`)
 
