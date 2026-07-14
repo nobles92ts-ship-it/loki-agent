@@ -3,6 +3,7 @@
 state/
 venv/
 __pycache__/
+.code-review-graph/
 *.pyc
 *.bak
 *.bak_*

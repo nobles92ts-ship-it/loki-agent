@@ -138,6 +138,7 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 | `!unlisten` / `!청취해제` | 스레드/채널 | 자동청취 해제 (좁은 존부터) |
 | `!listening` / `!청취목록` | 어디서든 | 자동청취 중인 존 목록 |
 | `!org …` / `!조직 …` | 어디서든 | [조직](#조직--회사별-조회-범위명령rate) 관리: `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
+| `!check <항목들>` / `!체크` | 어디서든 | [공유 체크리스트](#체크리스트) — 한 줄에 한 항목(쉼표 구분도 OK), 첫 줄이 `:`로 끝나면 제목. ☐/☑ 눌러 토글(모두에게 동기화) 또는 `완료 N`. 오너가 생성, 보는 사람 누구나 토글 |
 
 **자동청취 존** — 작업 스레드에서 매번 @멘션하기 귀찮다면, 그 스레드에서 `@Loki !listen` 한 번이면 이후 거기 있는 모두가 멘션 없이 Loki랑 대화한다(그룹 DM 느낌). 권한은 그대로: 게스트는 여전히 읽기전용+rate limit, `!block`이 존보다 우선, 멘션 메시지는 이중응답 없이 한 번만, 봇 메시지는 무시(루프 방지). 주의 — 존 안에선 **모든** 사람 메시지가 Claude 호출이 되니, 바쁜 채널보단 작업 스레드에 추천.
 
@@ -151,6 +152,21 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 !schedule once 2026-12-24 18:00 일찍 마무리하라고 리마인드
 !schedule list · !schedule remove s1
 ```
+
+### 체크리스트
+
+`!check`는 공유 클릭형 체크리스트를 올린다 — 첫 줄이 `:`로 끝나면 제목, 그다음 한 줄에 한 항목(쉼표 구분 리스트도 OK):
+
+```
+@Loki !check 장보기:
+우유
+계란
+빵
+```
+
+각 항목은 ☐/☑ 버튼이다. 누르면 토글되고, 상태가 그 메시지를 보는 **모두에게 동기화**된다 — 버튼 라벨은 업데이트 때 다시 렌더되기 때문(Slack 네이티브 체크박스는 사용자별 입력이라 동기화가 안 된다). 스레드에서 말로도 토글할 수 있다: `완료 2`, `완료 2 3`, `취소 2`, `다 완료`. 오너가 생성하고, 볼 수 있는 사람은 누구나 토글. 상태는 `state/checklists/`에 저장된다.
+
+> 클릭 토글은 **Interactivity**가 켜져 있어야 한다 (앱 설정 → **Interactivity & Shortcuts** → 토글 ON; Socket Mode라 Request URL 불필요). 이 레포 매니페스트로 만든 앱엔 이미 켜져 있고, 그 전에 설치했다면 한 번만 켜면 된다. 생성과 `완료 N`은 없이도 동작한다 — 버튼만 필요.
 
 ### 게스트 allowlist (`loki.md`)
 
@@ -222,6 +238,8 @@ Loki → ✅ 완료 — 시트 확인해줘.
 | v1.2 | ✅ macOS/Linux · 스케줄러(`!schedule`) · 병렬 작업+`!jobs`/`!cancel` · `!usage` · `!learn` · 테스트+CI |
 | v1.3 | ✅ 전용 계정(`CLAUDE_CONFIG_DIR`) · 게스트 rate limit · 사설 명령 훅(`try_handle`) |
 | v1.4 | ✅ 마크다운 → Slack mrkdwn 렌더링 · 이미지 입력(스샷→분석) · 파일 출력 |
+| v1.5 | ✅ 자동청취 존(`!listen` — 멘션 없는 스레드/채널) |
+| v1.6 | ✅ 조직(`!org` — 회사별 조회범위/명령/rate) · 공유 클릭형 체크리스트(`!check`) |
 | v2.0 | **Telegram** 어댑터 (`platforms/base` 계약 첫 검증) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |

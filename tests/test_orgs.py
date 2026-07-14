@@ -96,7 +96,7 @@ def test_allows_command_and_rate(tmp_path, monkeypatch):
     _write_org("acme", ACME.format(work=work))
     assert orgs.allows_command("acme", "summary") is True
     assert orgs.allows_command("acme", "SUMMARY") is True   # case-insensitive
-    assert orgs.allows_command("acme", "tcv2") is False
+    assert orgs.allows_command("acme", "deploy") is False
     assert orgs.allows_command(None, "summary") is False
     assert orgs.rate("acme") == 2
     assert orgs.rate(None) is None
