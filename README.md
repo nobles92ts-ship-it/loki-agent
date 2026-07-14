@@ -138,8 +138,9 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!unlisten` | thread / channel | stop auto-listening there (most specific zone first) |
 | `!listening` | anywhere | list active auto-listen zones |
 | `!org …` | anywhere | manage [organizations](#organizations--per-company-scope-commands-and-rate): `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
+| `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
@@ -153,6 +154,21 @@ Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` 
 **Auto-listen zones** — tired of @mentioning Loki in your working thread? Say `@Loki !listen` once in a thread (or at channel top level for the whole channel) and everyone there talks to Loki mention-free, like a group DM. Permissions don't change: guests stay read-only + rate-limited, `!block` overrides a zone, mentions aren't double-answered, and bot messages are ignored (no loops). Heads-up: in a zone **every** human message becomes a Claude call — prefer work threads over busy channels.
 
 > Requires the `message.channels` + `message.groups` bot events (no new OAuth scopes). Apps created from this repo's manifest already have them; if you installed before v1.5.0, add the two events under **Event Subscriptions → Subscribe to bot events** in your app config — no reinstall prompt.
+
+### Checklists
+
+`!check` posts a shared, clickable checklist — a title line ending in `:`, then one item per line (or a comma-separated list):
+
+```
+@Loki !check groceries:
+milk
+eggs
+bread
+```
+
+Each item is a ☐/☑ button. Tap it to toggle, and the state **syncs for everyone** viewing the message — button labels re-render on update, unlike Slack's native checkboxes whose checked state is per-viewer input. You can also toggle by talking in the checklist's thread: `done 2`, `done 2 3`, `undo 2`, `done all`. The owner creates a checklist; anyone who can see it may toggle. State persists in `state/checklists/`.
+
+> Clickable toggles need **Interactivity** enabled (app config → **Interactivity & Shortcuts** → toggle on; no Request URL needed with Socket Mode). Apps created from this repo's manifest already have it; older installs flip it on once. Creating a checklist and `done N` work without it — only the buttons need it.
 
 ### The guest allowlist (`loki.md`)
 
@@ -224,6 +240,8 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.2 | ✅ macOS/Linux · scheduler (`!schedule`) · parallel jobs + `!jobs`/`!cancel` · `!usage` · `!learn` · test suite + CI |
 | v1.3 | ✅ dedicated account (`CLAUDE_CONFIG_DIR`) · guest rate limiting · private-command hook (`try_handle`) |
 | v1.4 | ✅ Markdown → Slack mrkdwn rendering · image input (screenshot → analysis) · file output |
+| v1.5 | ✅ auto-listen zones (`!listen` — mention-free threads/channels) |
+| v1.6 | ✅ organizations (`!org` — per-company scope/commands/rate) · shared clickable checklists (`!check`) |
 | v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) |
 | v2.x | **Discord** · **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |

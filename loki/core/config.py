@@ -150,6 +150,12 @@ MSG: dict[str, dict[str, str]] = {
             "{manifest}\n"
             "--- end ---\n\n"),
         "missing_env": "[loki] Missing required setting: {name} — set it in .env (see .env.example)",
+        "check_usage": ("Give me items to check off — `!check` then one item per "
+                        "line (or comma-separated). First line ending in `:` is "
+                        "the title."),
+        "check_owner_only": "Only the owner can create a checklist.",
+        "check_none": "No checklist here yet — make one with `!check <items>`.",
+        "check_post_fail": "⚠️ Couldn't post the checklist — check the logs.",
         "kind_thread": "thread",
         "kind_channel": "channel",
         "scope_thread": "full thread",
@@ -259,6 +265,11 @@ MSG: dict[str, dict[str, str]] = {
             "{manifest}\n"
             "--- 끝 ---\n\n"),
         "missing_env": "[loki] 필수 설정 누락: {name} — .env 에 넣어줘 (.env.example 참고)",
+        "check_usage": ("체크할 항목을 줘 — `!check` 다음 한 줄에 하나씩 (또는 쉼표로 "
+                        "구분). 첫 줄이 `:`로 끝나면 제목이 돼."),
+        "check_owner_only": "체크리스트 생성은 오너만 할 수 있어.",
+        "check_none": "여기엔 아직 체크리스트가 없어 — `!check <항목들>`로 만들어줘.",
+        "check_post_fail": "⚠️ 체크리스트를 못 올렸어 — 로그 확인해줘.",
         "kind_thread": "스레드",
         "kind_channel": "채널",
         "scope_thread": "전체",
