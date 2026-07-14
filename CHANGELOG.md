@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.6.2] 2026-07-14
+
+Shared checklists.
+
+- **Checklists** — `!check` posts a shared, clickable checklist: a title line ending in `:`, then one item per line (or a comma-separated list). Each item is a ☐/☑ button that toggles for **everyone** — button labels re-render on `chat.update`, so state stays in sync across viewers (Slack's native `checkboxes` are per-user input and don't sync). Toggle by tapping, or by talking in the checklist's thread: `done 2`, `undo 2 3`, `done all`. Owner creates; anyone who can see it can toggle. Persisted in `state/checklists/`.
+- **Manifest** — enables **Interactivity** (`settings.interactivity.is_enabled`) so button clicks arrive over the Socket Mode connection (no Request URL). Apps built from this repo's manifest get it; installs from before v1.6.2 flip it on once under **Interactivity & Shortcuts**. Creating a checklist and `done N` work without it.
+- **Tests** — +22 checklist cases (88 total), green on the CI matrix.
+
 ## [v1.6.1] 2026-07-13
 
 - **Fix**: the org cache could serve stale data when a create/edit sequence landed within one filesystem-timestamp tick (coarse Windows mtime) — e.g. a double `!org add` of the same user right after `!org create` could bypass dedup. CRUD writes now invalidate the cache explicitly (no timestamp reliance for our own writes) and the change stamp includes file size. Caught by CI on the Windows runners.

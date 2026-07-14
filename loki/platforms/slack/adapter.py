@@ -22,6 +22,7 @@ from ...core import (autolisten, brain, config, dedup, jobs, learn, mrkdwn,
                      orgs, ratelimit, scheduler, scope, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
+from . import checklists
 
 # Optional private command extension — gitignored, workspace-specific heavy
 # commands (see private_commands.example.py). Absent in a clean checkout.
@@ -53,6 +54,7 @@ _PATH_RE = re.compile(
     re.IGNORECASE)
 
 app = App(token=BOT_TOKEN)
+checklists.register(app)            # clickable-checkbox handler (needs interactivity)
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
@@ -610,6 +612,18 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                 return
         except Exception:
             log.exception("private command handler failed")
+
+    # Checklists — owner `!check` create + anyone's `완료 N` toggle inside a
+    # checklist thread. Clickable checkbox toggles arrive via app.action instead.
+    try:
+        if checklists.try_handle({
+                "app": app, "event": event, "text": text, "user": user,
+                "channel": channel, "thread": thread,
+                "thread_root": event.get("thread_ts"),
+                "is_owner": is_owner, "post": _post}):
+            return
+    except Exception:
+        log.exception("checklist handler failed")
 
     # owner commands: !block / !unblock a channel, !summary <channel_id>
     if is_owner:
