@@ -1,5 +1,17 @@
 # Changelog
 
+## [v1.6.4] 2026-07-29
+
+Staying up, and making it yours.
+
+- **Is it still running?** — `python -m loki status` answers from the heartbeat alone (no network); `python -m loki doctor` adds the full install check. The worker stamps `state/health.json` on a timer and after every finished job, and **down means either half failing**: the process is gone, *or* the heartbeat went stale. A hung worker that's still technically running is just as broken as one that exited, and the old `tools/diag.py` couldn't tell you about either.
+- **Keeping it up** — `python -m loki gateway install` registers Loki with whatever the OS already has: a Scheduled Task on Windows plus a 5-minute watchdog (Windows will start a task but won't restart a crashed one), a systemd user unit with `Restart=on-failure` on Linux, a launchd agent with `KeepAlive` on macOS. Also `gateway ensure` (start only if down — safe on a timer), `stop`, `restart`, `uninstall`. Supervision stays the OS's job; a second Python process watching the first is one more thing that can die quietly.
+- **Plugins** — custom commands now live in `plugins/`, one file per command, discovered at boot: define `MATCH` and `handle(match, ctx)` and you're done. `!plugins` lists them. **Owner-only by default**, and opening one up takes *two* steps — `OWNER_ONLY = False` in the plugin **and** `!org allow <org> <name>` — because a file appearing in a folder must never silently hand guests a new way to reach the machine. Built-ins are matched first, so no plugin can shadow `!stop`. A plugin that fails to import, or raises, is contained rather than fatal. See [docs/PLUGINS.md](docs/PLUGINS.md). `plugins/*.py` is gitignored, so your commands survive pulling upstream.
+- The `private_commands.py` hook is unchanged and still the right tool for long-running pipelines that own their own threading — plugins return one string.
+- `tools/diag.py` is now a shim over `loki.core.diagnostics`, so it and `doctor` can't drift apart.
+- **Tests** — +30 (205 total).
+- [docs/ROADMAP.md](docs/ROADMAP.md) updated: model fallback on quota moved to *considered and not planned* (a subscription's usage window is one shared pool, so there's nothing smaller to fall back to), and the webhook entry now records that `!schedule` already reaches the same outcome without an inbound port.
+
 ## [v1.6.3] 2026-07-28
 
 Discord, and a memory.

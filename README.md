@@ -140,6 +140,7 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!unlisten` | thread / channel | stop auto-listening there (most specific zone first) |
 | `!listening` | anywhere | list active auto-listen zones |
 | `!org …` | anywhere | manage [organizations](#organizations--per-company-scope-commands-and-rate): `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
+| `!plugins` | anywhere | list your own installed commands — see [docs/PLUGINS.md](docs/PLUGINS.md) |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
 Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크`.
@@ -191,6 +192,29 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 - Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
 - **Drop a screenshot** in your DM (caption optional) and Loki reads it and analyzes it. If a reply produces a local file (report, chart), Loki attaches it. (owner DMs)
 - Replies **render as chat formatting** — on Slack, Claude's Markdown is converted to mrkdwn; Discord renders Markdown natively.
+
+### Keeping it running
+
+Loki is a process on your machine, so the honest question is "is it still up?"
+
+```bash
+python -m loki status            # up right now? (heartbeat only, no network)
+python -m loki doctor            # full install check + liveness
+python -m loki gateway install   # start at login + restart it if it dies
+python -m loki gateway ensure    # start it only if it isn't running
+python -m loki gateway restart   # stop and start again
+```
+
+`gateway install` registers Loki with whatever your OS already has — a
+Scheduled Task on Windows (plus a 5-minute watchdog, since Windows will start
+a task but won't restart a crashed one), a systemd user unit with
+`Restart=on-failure` on Linux, a launchd agent with `KeepAlive` on macOS.
+Undo it with `gateway uninstall`.
+
+The worker stamps `state/health.json` on a timer and after every finished job.
+`status` reports down when the process is gone **or** when the heartbeat has
+gone stale — a hung worker that's still technically running is just as broken
+as one that exited.
 
 ## Extending Loki — it runs your whole Claude Code
 
@@ -249,7 +273,8 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.5 | ✅ auto-listen zones (`!listen` — mention-free threads/channels) |
 | v1.6 | ✅ organizations (`!org` — per-company scope/commands/rate) · shared clickable checklists (`!check`) |
 | v1.6.3 | ✅ **Discord adapter** · rolling conversation memory + `!new` · shared command router · permission-file tamper guard |
-| next | supervision (`doctor`, restart-on-crash) · plugin directory · model fallback — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| v1.6.4 | ✅ **supervision** (`status` · `doctor` · `gateway`, heartbeat, restart-on-crash) · **plugins** (`plugins/`, one file per command) |
+| next | per-user sessions in shared channels · token-level usage — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 | v2.0 | **Telegram** adapter |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |

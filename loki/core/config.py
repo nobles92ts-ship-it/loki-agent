@@ -92,6 +92,10 @@ MSG: dict[str, dict[str, str]] = {
         "learn_saved": "🧠 Noted — {n} item(s) in the learnings inbox (state/learnings.md).",
         "session_reset": "🆕 Fresh start — I've dropped this conversation's memory.",
         "session_reset_none": "Already a fresh conversation — nothing to drop.",
+        "plugins_none": ("No plugins installed. Drop a `.py` file into `{path}` "
+                         "— see docs/PLUGINS.md."),
+        "plugins_header": "🧩 Plugins ({n}) — 🔒 owner only · 👥 open to granted orgs",
+        "plugin_error": "⚠️ Plugin `{name}` failed: {e}",
         "rate_limited": ("🚦 You've hit the guest limit ({n}/hour). "
                          "Try again in ~{m} min."),
         "image_default": "Analyze the attached image(s).",
@@ -224,6 +228,10 @@ MSG: dict[str, dict[str, str]] = {
         "learn_saved": "🧠 기록했어 — 인박스에 {n}건 대기 중 (state/learnings.md).",
         "session_reset": "🆕 새로 시작할게 — 이 대화의 이전 맥락은 잊었어.",
         "session_reset_none": "이미 새 대화야 — 지울 맥락이 없어.",
+        "plugins_none": ("설치된 플러그인이 없어. `{path}` 에 `.py` 파일을 넣어줘 "
+                         "— docs/PLUGINS.md 참고."),
+        "plugins_header": "🧩 플러그인 {n}개 — 🔒 오너 전용 · 👥 권한 받은 조직도 가능",
+        "plugin_error": "⚠️ 플러그인 `{name}` 실행 실패: {e}",
         "rate_limited": ("🚦 게스트 사용 한도에 도달했어 (시간당 {n}회). "
                          "약 {m}분 후 다시 시도해줘."),
         "image_default": "첨부한 이미지를 분석해줘.",

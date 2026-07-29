@@ -119,11 +119,35 @@ Add `discord` to serve Discord instead (or set `LOKI_PLATFORM=discord` in `.env`
 - Then: `Connecting to Slack (Socket Mode)…` → DM your bot `hello`.
 - To serve both platforms, run two processes. They share `state/` safely, so schedules, usage and org settings stay in one place.
 
-Background / autostart — Windows:
-- Double-click `run_worker.vbs` — runs hidden, survives closing the terminal.
-- `.\setup.ps1 -Autostart` — registers a launcher in your Startup folder (runs at login).
+## 3b. Keep it running
 
-Background / autostart — macOS / Linux:
+One command registers Loki with your OS and gets out of the way:
+
+```bash
+python -m loki gateway install
+```
+
+| OS | What it registers | Restart on crash |
+|---|---|---|
+| Windows | Scheduled Task at logon + a 5-minute watchdog task | the watchdog (`gateway ensure`) — Windows starts tasks but won't restart a crashed one |
+| Linux | systemd user unit | `Restart=on-failure` |
+| macOS | launchd agent | `KeepAlive` |
+
+Undo with `gateway uninstall`. Check on it any time:
+
+```bash
+python -m loki status
+```
+
+It reports **down** when the process is gone *or* when the heartbeat has gone
+stale — a worker that's still technically running but stopped answering is
+just as broken as one that exited.
+
+Manual alternatives, if you'd rather not register anything — Windows:
+- Double-click `run_worker.vbs` — runs hidden, survives closing the terminal.
+- `.\setup.ps1 -Autostart` — registers a launcher in your Startup folder (runs at login, no crash recovery).
+
+Manual alternatives — macOS / Linux:
 - Quick: `nohup ./venv/bin/python -m loki >/dev/null 2>&1 &`
 - Linux (systemd user service) — `~/.config/systemd/user/loki.service`, then `systemctl --user enable --now loki`:
 
@@ -195,6 +219,9 @@ Optional: `- rate: 20` under `## Settings` for a per-org hourly cap, `!org allow
 | Discord: bot online but ignores everything | **MESSAGE CONTENT intent off** — Discord delivers empty message bodies | dev portal → Bot → Privileged Gateway Intents → enable, then restart |
 | Discord: `Discord login failed` | wrong or reset bot token | re-copy from dev portal → Bot → Reset Token |
 | Discord: replies in a thread land in the parent | bot lacks **Send Messages in Threads** | re-invite with the permission, or fix it in Server Settings → Roles |
+| Bot silently stopped answering | worker died or hung | `python -m loki status` tells you which; `gateway install` prevents the next one |
+| `status` says "never run on this machine" | worker hasn't started since upgrading to v1.6.4 | start it once — the heartbeat file appears then |
+| Your plugin isn't firing | file didn't load, or the caller isn't allowed | `!plugins` shows what loaded; import errors are in `state/worker.log`. Non-owners need **both** `OWNER_ONLY = False` and `!org allow <org> <name>` |
 | Loki forgot what we were just discussing | the conversation went idle past `SESSION_IDLE_MIN` (default 120 min) | raise it in `.env`, or accept it — `!new` resets on demand |
 | Loki drags in stale context from hours ago | same setting, opposite problem | lower `SESSION_IDLE_MIN`, or say `!new` |
 | `⏱️ Timed out` | request bigger than `TIMEOUT_SEC` | raise `TIMEOUT_SEC` or split the ask |

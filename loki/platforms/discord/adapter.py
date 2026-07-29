@@ -24,8 +24,8 @@ from pathlib import Path
 import discord
 
 from ...core import (autolisten, blocked, brain, commands, config, dedup,
-                     guard, jobs, orgs, ratelimit, scheduler, scope, sessions,
-                     usage)
+                     guard, health, jobs, orgs, ratelimit, scheduler, scope,
+                     sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -464,6 +464,7 @@ async def _dispatch(message: discord.Message, is_mention: bool,
 # ─────────────────────────── entrypoint ───────────────────────────
 def run() -> None:
     scope.ensure_manifest()
+    health.start("discord")
     jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
     scheduler.start(_fire_schedule)
     log.info("worker starting platform=discord allowlist=%s work_dir=%s mode=%s",
