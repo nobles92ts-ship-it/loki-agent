@@ -205,11 +205,10 @@ python -m loki gateway ensure    # start it only if it isn't running
 python -m loki gateway restart   # stop and start again
 ```
 
-`gateway install` registers Loki with whatever your OS already has — a
-Scheduled Task on Windows (plus a 5-minute watchdog, since Windows will start
-a task but won't restart a crashed one), a systemd user unit with
-`Restart=on-failure` on Linux, a launchd agent with `KeepAlive` on macOS.
-Undo it with `gateway uninstall`.
+`gateway install` registers Loki with whatever your OS already has — a Startup
+folder launcher plus a 5-minute watchdog task on Windows (no administrator
+needed), a systemd user unit with `Restart=on-failure` on Linux, a launchd
+agent with `KeepAlive` on macOS. Undo it with `gateway uninstall`.
 
 The worker stamps `state/health.json` on a timer and after every finished job.
 `status` reports down when the process is gone **or** when the heartbeat has
