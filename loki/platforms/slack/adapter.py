@@ -18,8 +18,9 @@ from pathlib import Path
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import (autolisten, brain, config, dedup, jobs, learn, mrkdwn,
-                     orgs, ratelimit, scheduler, scope, usage)
+from ...core import (autolisten, blocked, brain, commands, config, dedup,
+                     guard, jobs, mrkdwn, orgs, ratelimit, scheduler, scope,
+                     sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 from . import checklists
@@ -41,7 +42,6 @@ CHANNEL_CTX_DAYS = int(os.environ.get("LOKI_CHANNEL_CTX_DAYS", "7"))
 CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
 SELFTEST_FILE = config.STATE / "selftest.json"
-BLOCKED_FILE = config.STATE / "blocked_channels.json"
 IMG_DIR = config.STATE / "img"             # downloaded inbound image attachments
 
 MAX_FILE_BYTES = 20 * 1024 * 1024          # cap per download / upload (20 MB)
@@ -58,70 +58,22 @@ checklists.register(app)            # clickable-checkbox handler (needs interact
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
-_BLOCK_RE = re.compile(r"^!(?:block|차단)\s+(\S+)$", re.IGNORECASE)
-_UNBLOCK_RE = re.compile(r"^!(?:unblock|차단해제)\s+(\S+)$", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"^!(?:summary|채널요약)\s+(\S+)$", re.IGNORECASE)
-_USAGE_RE = re.compile(r"^!(?:usage|사용량)(?:\s+(\d{1,3}))?$", re.IGNORECASE)
-_JOBS_RE = re.compile(r"^!(?:jobs|작업목록)$", re.IGNORECASE)
-_CANCEL_RE = re.compile(r"^!(?:cancel|취소)\s+(j\d+)$", re.IGNORECASE)
-_SCHED_RE = re.compile(r"^!(?:schedule|예약)\s+(.+)$", re.IGNORECASE | re.DOTALL)
-_LEARN_RE = re.compile(r"^!(?:learn|학습)\s+(.+)$", re.IGNORECASE | re.DOTALL)
-_LISTEN_RE = re.compile(r"^!(?:listen|청취)$", re.IGNORECASE)
-_UNLISTEN_RE = re.compile(r"^!(?:unlisten|청취해제)$", re.IGNORECASE)
-_LISTENING_RE = re.compile(r"^!(?:listening|청취목록)$", re.IGNORECASE)
-_ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
-_ORG_SUB_RE = re.compile(
-    r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
-    re.IGNORECASE | re.DOTALL)
 _MENTION_ID_RE = re.compile(r"<@([UW][A-Z0-9]+)>")
+_USER_ID_RE = re.compile(r"[UW][A-Z0-9]{4,}")       # bare id typed by hand
+_CHANNEL_ID_RE = re.compile(r"[CG][A-Z0-9]{4,}")
 _names: dict[str, str] = {}         # user id -> display name cache
-
-
-# ── channel block list (owner opt-out) ──────────────────────────────────────
-# Every channel Loki joins is usable by default; the owner can shut one off
-# from DM with "!block <channel_id>" and reopen it with "!unblock <id>".
-_blocked_lock = threading.Lock()
-
-
-def _load_blocked() -> set[str]:
-    try:
-        return set(json.loads(BLOCKED_FILE.read_text(encoding="utf-8")))
-    except Exception:
-        return set()
-
-
-BLOCKED_CHANNELS = _load_blocked()
-
-
-def _set_blocked(channel_id: str, blocked: bool) -> None:
-    with _blocked_lock:
-        (BLOCKED_CHANNELS.add if blocked else BLOCKED_CHANNELS.discard)(channel_id)
-        try:
-            BLOCKED_FILE.write_text(json.dumps(sorted(BLOCKED_CHANNELS)),
-                                    encoding="utf-8")
-        except Exception:
-            log.exception("blocked_channels.json write failed")
-
-
-def _is_blocked(channel_id: str) -> bool:
-    with _blocked_lock:
-        return channel_id in BLOCKED_CHANNELS
-
-
-# Auto-listen zones live in core.autolisten (owner opt-in via !listen); the
-# adapter only formats the listing and wires the commands.
-def _fmt_listening() -> str:
-    chans, threads = autolisten.snapshot()
-    if not chans and not threads:
-        return t("listening_none")
-    lines = [t("listening_header", c=len(chans), t=len(threads))]
-    lines += [f"• #{c}" for c in chans]
-    lines += [f"• 🧵 {th}" for th in threads]
-    return "\n".join(lines)
 
 
 def _strip_mention(text: str) -> str:
     return _MENTION_RE.sub("", text or "").strip()
+
+
+def _session_key(channel: str, thread_ts: str | None) -> str | None:
+    """Conversation key for --resume continuity (see core.sessions.key_for).
+    `D…` = DM, straight from Slack's channel ids."""
+    return sessions.key_for(channel, thread_ts,
+                            is_dm=str(channel or "").startswith("D"))
 
 
 def _user_name(uid: str | None) -> str | None:
@@ -247,6 +199,12 @@ def _handle(job: dict) -> None:
     notice = threading.Timer(60.0, _safe_post, args=(job, t("processing_notice")))
     notice.daemon = True
     notice.start()
+    # Permission files may only change in the owner's own DM. `D…` = DM, straight
+    # from Slack — a transport fact no message content can forge. Everything else
+    # runs under the guard's deny rules and gets snapshot/reverted (core.guard).
+    owner_dm = (job["user"] == ALLOWED_USER
+                and str(job.get("channel") or "").startswith("D"))
+    snap = None if owner_dm else guard.snapshot()
     try:
         if job.get("target_channel"):          # owner's !summary <channel_id>
             context, kind, scope_label = (_channel_context(job["target_channel"]),
@@ -268,15 +226,21 @@ def _handle(job: dict) -> None:
         if img_paths:
             prompt = t("image_note", n=len(img_paths),
                        paths="\n".join(f"- {p}" for p in img_paths)) + prompt
-        with jobs.sess_lock:
-            resume_id = jobs.sessions.get(thread) if thread else None
+        skey = job.get("session_key")
+        resume_id = sessions.get(skey)
         perm_mode = job["permission_mode"]
 
         # Guests: the loki.md allowlist — everything else is tool-level denied
         # via a per-request settings file, cwd pinned to the loki folder, and
         # the shared scope explained in-prompt. Owners are unaffected.
+        #
+        # An owner talking in a *channel* is protected too: _channel_context
+        # feeds other people's messages into a bypassPermissions run, so that
+        # path carries the same injection risk as a guest's.
         if job["user"] == ALLOWED_USER:
             guest_settings, run_cwd = None, None
+            if not owner_dm:
+                guest_settings = guard.settings_file()
         else:
             # org members get their org's manifest; unaffiliated → loki.md
             guest_settings, manifest = scope.write_scope_settings(job.get("org"))
@@ -290,8 +254,10 @@ def _handle(job: dict) -> None:
         if job.get("cancelled"):           # killed via !cancel/!stop — stay quiet
             return
 
-        # stale --resume → retry once with a fresh session
+        # stale --resume → drop the dead id (so the next turn doesn't retry it)
+        # and try once more with a fresh session
         if res["error"] and resume_id and res["reason"] == "error":
+            sessions.reset(skey)
             res = brain.run_claude(prompt, None, perm_mode,
                                    settings_file=guest_settings, cwd=run_cwd,
                                    job=job)
@@ -300,9 +266,7 @@ def _handle(job: dict) -> None:
             if not res["error"]:
                 res["text"] = t("fresh_restart") + res["text"]
 
-        if thread and res.get("session_id"):
-            with jobs.sess_lock:
-                jobs.sessions[thread] = res["session_id"]
+        sessions.remember(skey, res.get("session_id"))
 
         dur = time.time() - t0
         usage.record(job.get("kind", "?"), job.get("user", "?"),
@@ -323,6 +287,21 @@ def _handle(job: dict) -> None:
             _upload_reply_files(job, res["text"])
     finally:
         notice.cancel()
+        if snap is not None:
+            reverted = guard.restore(snap)
+            if reverted:
+                alert_owner(guard.alert_text(reverted))
+                _safe_post(job, t("tamper_blocked"))
+
+
+def alert_owner(text: str) -> None:
+    """DM the owner out-of-band — used for security alerts that must not depend
+    on the owner happening to watch the channel where they fired."""
+    try:
+        dm = app.client.conversations_open(users=ALLOWED_USER)["channel"]["id"]
+        app.client.chat_postMessage(channel=dm, text=text)
+    except Exception:
+        log.exception("owner alert DM failed")
 
 
 def _on_job_error(job: dict, e: Exception) -> None:
@@ -350,155 +329,24 @@ def _chunks(s: str):
         yield s
 
 
-# ─────────────────────────── owner command helpers ───────────────────────────
-def _fmt_dur(seconds: float) -> str:
-    s = max(0, int(seconds))
-    if s < 60:
-        return f"{s}s"
-    if s < 3600:
-        return f"{s // 60}m {s % 60:02d}s"
-    return f"{s // 3600}h {(s % 3600) // 60:02d}m"
-
-
-def _fmt_usage(days: int) -> str:
-    data = usage.summarize(max(1, min(days, 90)))
-    if not data["total"]:
-        return t("usage_empty")
-    lines = [t("usage_header", d=data["days"], n=data["total"], ok=data["ok"],
-               fail=data["fail"], dur=_fmt_dur(data["dur_total"])),
-             t("usage_today", n=data["today"]["total"],
-               dur=_fmt_dur(data["today"]["dur"]))]
-    if data["by_user"]:
-        s = " · ".join(f"{_user_name(u) or u} {n}"
-                       for u, n in data["by_user"][:8])
-        lines.append(t("usage_by_user", s=s))
-    if data["by_kind"]:
-        lines.append(t("usage_by_kind",
-                       s=" · ".join(f"{k} {n}" for k, n in data["by_kind"])))
-    if data.get("by_org"):
-        lines.append(t("usage_by_org",
-                       s=" · ".join(f"{o} {n}" for o, n in data["by_org"])))
-    return "\n".join(lines)
-
-
-def _fmt_jobs() -> str:
-    items = jobs.snapshot()
-    if not items:
-        return t("jobs_none")
-    running = [j for j in items if j["status"] == "running"]
-    queued = [j for j in items if j["status"] == "queued"]
-    lines = [t("jobs_header", r=len(running), q=len(queued))]
-    now = time.time()
-    for j in running + queued:
-        who = _user_name(j.get("user")) or j.get("user") or "?"
-        age = _fmt_dur(now - j["started"]) if j.get("started") else "—"
-        snip = (j.get("text") or "").replace("\n", " ")[:48]
-        lines.append(f"• {j['id']} [{j['status']}] {j.get('kind', '?')}/{who}"
-                     f" · {age} · “{snip}”")
-    return "\n".join(lines)
-
-
-def _schedule_cmd(channel: str, arg: str) -> str:
-    a = arg.strip()
-    if a.lower() in ("list", "목록"):
-        items = scheduler.list_all()
-        if not items:
-            return t("sched_empty")
-        lines = [t("sched_list_header")]
-        for s in items:
-            nxt = time.strftime("%Y-%m-%d %H:%M",
-                                time.localtime(s.get("next_fire", 0)))
-            snip = (s.get("prompt") or "").replace("\n", " ")[:60]
-            lines.append(f"• {s['id']} — {scheduler.spec_str(s)} → {nxt} · “{snip}”")
-        return "\n".join(lines)
-    m = re.match(r"^(?:remove|delete|삭제|제거)\s+(s\d+)$", a, re.IGNORECASE)
-    if m:
-        sid = m.group(1).lower()
-        return (t("sched_removed", id=sid) if scheduler.remove(sid)
-                else t("sched_not_found", id=sid))
-    spec = scheduler.parse(a)
-    if not spec:
-        return t("sched_help")
-    item = scheduler.add(spec, channel)
-    nxt = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["next_fire"]))
-    return t("sched_added", id=item["id"], spec=scheduler.spec_str(item), next=nxt)
-
-
-def _org_cmd(arg: str, raw_text: str, channel: str) -> str:
-    """Owner `!org …` — thin command layer; the org's .md file stays the SSoT.
-    Mentions are read from the RAW event text (channel mentions get stripped
-    from the command text before dispatch)."""
-    m = _ORG_SUB_RE.match((arg or "").strip())
-    if not m:
-        return t("org_help")
-    sub, rest = m.group(1).lower(), (m.group(2) or "").strip()
-    if sub == "list":
-        ns = orgs.names()
-        if not ns:
-            return t("org_list_empty")
-        lines = [t("org_list_header", n=len(ns))]
-        for n in ns:
-            o = orgs.get(n) or {}
-            lines.append(t("org_list_line", name=n,
-                           m=len(o.get("members", [])),
-                           c=len(o.get("channels", [])),
-                           k=len(o.get("commands", [])),
-                           r=o.get("rate") if o.get("rate") is not None
-                             else config.GUEST_RATE_PER_HOUR))
-        return "\n".join(lines)
-    toks = rest.split()
-    name = toks[0] if toks else ""
-    if sub == "create":
-        r = orgs.create(name)
-        return (t("org_created", name=name, path=orgs.org_file(name))
-                if r == "created" else t("org_" + r, name=name))
-    if not name or orgs.get(name) is None:
-        return t("org_not_found", name=name or "?")
-    if sub == "info":
-        o = orgs.get(name)
-        mem = ", ".join(o["members"][:8]) + (" …" if len(o["members"]) > 8 else "")
-        return t("org_info", name=name, path=orgs.org_file(name),
-                 n=len(o["members"]), members=mem or "-",
-                 channels=", ".join(o["channels"]) or "-",
-                 commands=", ".join(o["commands"]) or "-",
-                 rate=o["rate"] if o["rate"] is not None
-                      else config.GUEST_RATE_PER_HOUR)
-    if sub in ("add", "remove"):
-        ids = [i for i in _MENTION_ID_RE.findall(raw_text or "")
-               if i != BOT_USER_ID]
-        ids += [tk for tk in toks[1:] if re.fullmatch(r"[UW][A-Z0-9]{4,}", tk)]
-        ids = list(dict.fromkeys(ids))
-        if not ids:
-            return t("org_add_none", name=name)
-        if sub == "add":
-            n = sum(1 for i in ids
-                    if orgs.add_member(name, i, _user_name(i) or ""))
-            return t("org_added", n=n, org=name) if n else t("org_nochange")
-        n = sum(1 for i in ids if orgs.remove_member(name, i))
-        return t("org_member_removed", org=name) if n else t("org_nochange")
-    if sub in ("bind", "unbind"):
-        cid = next((tk for tk in toks[1:]
-                    if re.fullmatch(r"[CG][A-Z0-9]{4,}", tk)), None)
-        if not cid:
-            if channel and channel[0] in "CG":   # typed inside the target channel
-                cid = channel
-            else:
-                return t("org_bind_need_id", name=name)
-        if sub == "bind":
-            return (t("org_bound", cid=cid, org=name) if orgs.bind(name, cid)
-                    else t("org_nochange"))
-        return (t("org_unbound", org=name) if orgs.unbind(name, cid)
-                else t("org_nochange"))
-    if sub in ("allow", "deny"):
-        cmd = toks[1].lstrip("!").lower() if len(toks) > 1 else ""
-        if not cmd:
-            return t("org_help")
-        if sub == "allow":
-            return (t("org_cmd_allowed", org=name, cmd=cmd)
-                    if orgs.allow_command(name, cmd) else t("org_nochange"))
-        return (t("org_cmd_denied", org=name, cmd=cmd)
-                if orgs.deny_command(name, cmd) else t("org_nochange"))
-    return t("org_help")
+# ─────────────────────────── owner commands ───────────────────────────
+# The `!` vocabulary itself lives in core.commands, shared with every other
+# platform. Slack only supplies what Slack alone knows: how to resolve a name,
+# and which ids the caller referenced (mention markup and id shapes differ).
+def _cmd_ctx(text: str, event: dict, channel: str, is_owner: bool) -> dict:
+    raw = event.get("text") or ""
+    return {
+        "channel": channel,
+        "thread": event.get("thread_ts"),
+        "session_key": _session_key(channel, event.get("thread_ts")),
+        "is_dm": str(channel or "").startswith("D"),
+        "is_owner": is_owner,
+        "name_of": _user_name,
+        # read from the RAW text: channel mentions are stripped before dispatch
+        "user_ids": [i for i in _MENTION_ID_RE.findall(raw) if i != BOT_USER_ID],
+        "is_user_id": lambda tk: bool(_USER_ID_RE.fullmatch(tk)),
+        "is_channel_id": lambda tk: bool(_CHANNEL_ID_RE.fullmatch(tk)),
+    }
 
 
 def _fire_schedule(s: dict) -> None:
@@ -526,7 +374,7 @@ def on_message(body, event, logger):
     if BOT_USER_ID and f"<@{BOT_USER_ID}>" in (event.get("text") or ""):
         return
     channel = event.get("channel")
-    if _is_blocked(channel):
+    if blocked.is_blocked(channel):
         return
     if autolisten.is_zone(channel, event.get("thread_ts")):
         _dispatch(body, event, is_mention=False, auto_listen=True)
@@ -570,7 +418,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
         # in blocked channels.
         if not (is_mention or auto_listen) or not user:
             return
-        if _is_blocked(channel):
+        if blocked.is_blocked(channel):
             return
     permission_mode = config.PERMISSION_MODE if is_owner else "plan"
 
@@ -625,18 +473,9 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
     except Exception:
         log.exception("checklist handler failed")
 
-    # owner commands: !block / !unblock a channel, !summary <channel_id>
+    # !summary <channel_id> stays here — it enqueues a job against ANOTHER
+    # channel, which is Slack plumbing rather than a plain-text reply.
     if is_owner:
-        m = _BLOCK_RE.match(text)
-        if m:
-            _set_blocked(m.group(1), True)
-            _post(channel, thread, t("blocked", cid=m.group(1)))
-            return
-        m = _UNBLOCK_RE.match(text)
-        if m:
-            _set_blocked(m.group(1), False)
-            _post(channel, thread, t("unblocked", cid=m.group(1)))
-            return
         m = _SUMMARY_RE.match(text)
         if m:
             jobs.submit({"channel": channel, "thread": thread,
@@ -645,49 +484,10 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                          "is_mention": False, "permission_mode": "plan",
                          "target_channel": m.group(1), "kind": "summary"})
             return
-        m = _USAGE_RE.match(text)
-        if m:
-            _post(channel, thread, _fmt_usage(int(m.group(1) or 7)))
-            return
-        if _JOBS_RE.match(text):
-            _post(channel, thread, _fmt_jobs())
-            return
-        m = _CANCEL_RE.match(text)
-        if m:
-            jid = m.group(1).lower()
-            key = {"killed": "cancel_killed", "dequeued": "cancel_dequeued",
-                   "starting": "cancel_retry"}.get(jobs.cancel(jid),
-                                                   "cancel_not_found")
-            _post(channel, thread, t(key, id=jid))
-            return
-        m = _SCHED_RE.match(text)
-        if m:
-            _post(channel, thread, _schedule_cmd(channel, m.group(1)))
-            return
-        m = _LEARN_RE.match(text)
-        if m:
-            _post(channel, thread,
-                  t("learn_saved", n=learn.capture(m.group(1))))
-            return
-        if _LISTEN_RE.match(text):
-            _post(channel, thread, t(autolisten.add(channel, event.get("thread_ts"))))
-            return
-        if _UNLISTEN_RE.match(text):
-            _post(channel, thread, t(autolisten.remove(channel, event.get("thread_ts"))))
-            return
-        if _LISTENING_RE.match(text):
-            _post(channel, thread, _fmt_listening())
-            return
-        m = _ORG_RE.match(text)
-        if m:
-            _post(channel, thread,
-                  _org_cmd(m.group(1), event.get("text") or "", channel))
-            return
 
-    if is_owner and text.lower() in ("!stop", "!cancel", "중지", "!중지"):
-        n = jobs.cancel_all()
-        _post(channel, thread,
-              t("stopped_n", n=n) if n else t("nothing_running"))
+    reply = commands.handle(text, _cmd_ctx(text, event, channel, is_owner))
+    if reply is not None:
+        _post(channel, thread, reply)
         return
 
     # Guest throttle — protect the owner's subscription (owners never limited).
@@ -715,6 +515,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                  "in_thread": bool(event.get("thread_ts")),
                  "is_mention": is_mention, "permission_mode": permission_mode,
                  "kind": "owner" if is_owner else "guest",
+                 "session_key": _session_key(channel, event.get("thread_ts")),
                  "org": org, "image_files": image_files})
 
 

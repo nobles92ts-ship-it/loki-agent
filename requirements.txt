@@ -1,1 +1,5 @@
+# Slack (LOKI_PLATFORM=slack, the default)
 slack_bolt>=1.29
+
+# Discord (LOKI_PLATFORM=discord) — drop this line if you only use Slack
+discord.py>=2.3

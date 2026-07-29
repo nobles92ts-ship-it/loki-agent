@@ -26,7 +26,12 @@ Decide what Loki should be allowed to do; the wizard sets it up accordingly.
 
 Whatever you pick: **guests are always read-only** and see **only** the paths you put in `loki.md` (created empty on first boot — sharing is opt-in, folder by folder). You can silence any channel with `!block <channel_id>` from your DM. The full tier table lives in the [README](../README.md#permissions--who-can-do-what).
 
-## 1. Create the Slack app
+## 1. Create the chat app
+
+Loki serves one platform per process — Slack by default. For Discord, do
+[1b](#1b-create-the-discord-app-alternative-to-slack) instead of 1a.
+
+### 1a. Create the Slack app
 
 1. <https://api.slack.com/apps> → **Create New App** → **From an app manifest**
 2. Pick your workspace → paste all of [`loki/platforms/slack/manifest.yaml`](../loki/platforms/slack/manifest.yaml) → **Create**
@@ -36,6 +41,25 @@ Whatever you pick: **guests are always read-only** and see **only** the paths yo
    - name it anything (e.g. `socket`), add scope **`connections:write`** → copy the `xapp-…` token
 5. ⚠️ **App Home tab → scroll to "Show Tabs" → check *"Allow users to send Slash commands and messages from the messages tab"***
    Without this, the DM input box is greyed out and you cannot message the bot at all.
+
+### 1b. Create the Discord app (alternative to Slack)
+
+1. <https://discord.com/developers/applications> → **New Application** → name it
+2. **Bot** → **Reset Token** → copy it into `.env` as `DISCORD_BOT_TOKEN`
+3. ⚠️ On the same page, **Privileged Gateway Intents → MESSAGE CONTENT INTENT → ON**.
+   Without it Discord delivers empty message bodies and Loki cannot read a
+   single word. It refuses to start and tells you so, rather than sitting there
+   looking connected and deaf.
+4. **OAuth2 → URL Generator** → scopes **`bot`**, bot permissions
+   **View Channels**, **Send Messages**, **Send Messages in Threads**,
+   **Read Message History**, **Add Reactions**, **Attach Files** →
+   open the generated URL to invite it to your server
+5. Get your own user ID: Discord **Settings → Advanced → Developer Mode: ON**,
+   then right-click your name → **Copy User ID** → `.env` as `DISCORD_OWNER_ID`
+6. In `.env` set `LOKI_PLATFORM=discord` (or start it with `python -m loki discord`)
+
+Slack's `!check` clickable checklists are Slack-only; everything else — DMs,
+mentions, threads, guest scope, orgs, rate limits, schedules — works the same.
 
 ## 2. Run the wizard
 
@@ -85,8 +109,15 @@ venv\Scripts\python.exe -m pip install -r requirements.txt
 ./venv/bin/python -m loki              # macOS / Linux
 ```
 
+Add `discord` to serve Discord instead (or set `LOKI_PLATFORM=discord` in `.env`):
+
+```bash
+./venv/bin/python -m loki discord
+```
+
 - First boot in read-only mode runs a ~20 s **self-test** proving that plan mode cannot write files (fail-closed — Loki refuses to start if the guarantee breaks).
 - Then: `Connecting to Slack (Socket Mode)…` → DM your bot `hello`.
+- To serve both platforms, run two processes. They share `state/` safely, so schedules, usage and org settings stay in one place.
 
 Background / autostart — Windows:
 - Double-click `run_worker.vbs` — runs hidden, survives closing the terminal.
@@ -161,6 +192,11 @@ Optional: `- rate: 20` under `## Settings` for a per-org hourly cap, `!org allow
 | Guest gets "outside the shared scope" | the path isn't in the guest allowlist | add the folder to `<WORK_DIR>\loki\loki.md` under `## Allowed paths` (applies immediately) |
 | Guests get no reply in one channel | channel was `!block`ed | DM the bot `!unblock <channel_id>` |
 | Replies stop mid-conversation / duplicated | **two Loki processes on the same app** — Socket Mode splits events between connections | keep exactly one instance per Slack app |
+| Discord: bot online but ignores everything | **MESSAGE CONTENT intent off** — Discord delivers empty message bodies | dev portal → Bot → Privileged Gateway Intents → enable, then restart |
+| Discord: `Discord login failed` | wrong or reset bot token | re-copy from dev portal → Bot → Reset Token |
+| Discord: replies in a thread land in the parent | bot lacks **Send Messages in Threads** | re-invite with the permission, or fix it in Server Settings → Roles |
+| Loki forgot what we were just discussing | the conversation went idle past `SESSION_IDLE_MIN` (default 120 min) | raise it in `.env`, or accept it — `!new` resets on demand |
+| Loki drags in stale context from hours ago | same setting, opposite problem | lower `SESSION_IDLE_MIN`, or say `!new` |
 | `⏱️ Timed out` | request bigger than `TIMEOUT_SEC` | raise `TIMEOUT_SEC` or split the ask |
 | Subscription limit message | your Claude plan's rolling window is exhausted | wait for the reset; consider `CLAUDE_MODEL=sonnet` |
 | Korean/emoji garbled in logs | legacy console codepage | already handled (UTF-8 forced); report if you still see it |

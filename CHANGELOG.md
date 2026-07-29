@@ -1,5 +1,19 @@
 # Changelog
 
+## [v1.6.3] 2026-07-28
+
+Discord, and a memory.
+
+- **Discord adapter** — `python -m loki discord` (or `LOKI_PLATFORM=discord`) serves Discord over the gateway, with the same posture as Slack: DMs are the owner's private line, guild `@mentions` are open to anyone but hard-forced read-only, threads carry their own conversation, and guests get the `loki.md` scope, org tiers and rate limits unchanged. Needs `DISCORD_BOT_TOKEN`, `DISCORD_OWNER_ID`, and the **MESSAGE CONTENT** privileged intent — without it Discord delivers empty message bodies, so Loki refuses to start and says so instead of looking connected and deaf. `!check` stays Slack-only (it depends on Slack's interactive buttons). One process per platform; run two to serve both, they share `state/` safely.
+- **Conversation memory** — a DM is now one running conversation instead of a fresh session per message: previously the session key was the message's own timestamp, so every top-level DM started over. Threads behaved correctly already and still do. A channel's top level deliberately gets no session — several people share it, and one person's context must not leak into the next person's answer. Sessions expire after `SESSION_IDLE_MIN` minutes of silence (default 120, `0` = never) and persist across restarts in `state/sessions.json`. **`!new`** (`!새대화`, `!리셋`) drops one on demand.
+- **Queue orders by conversation** — the job queue now serialises on `session_key`, so two quick DMs can't resume the same Claude session concurrently. Jobs without a session key (channel mentions) still run in parallel as before.
+- **Shared command router** — `!jobs`, `!cancel`, `!stop`, `!usage`, `!schedule`, `!learn`, `!new`, `!listen`/`!unlisten`/`!listening`, `!block`/`!unblock` and `!org` moved from the Slack adapter into `loki/core/commands.py`, so every platform inherits one vocabulary instead of a near-miss reimplementation. The owner gate lives inside the router — an adapter can't forget it. Adapters supply only what they alone know (name lookup, mention id extraction). Slack behaviour is unchanged; `!summary` and `!check` stay adapter-side because they aren't plain-text replies.
+- **Permission-file tamper guard** (`loki/core/guard.py`) — `loki.md`, `orgs/*.md` and `.env` decide who may read and run what, so any run outside the owner's own DM is both tool-denied from writing them and snapshot-compared afterwards; anything changed is reverted and the owner is DM'd. Authority is read from the transport (user id + DM channel), never from message content.
+- **Fix**: `core.orgs` hardcoded Slack's `U…`/`C…` id shapes, so `!org add`/`!org bind` silently rejected every Discord id. Core now validates ids generically; adapters do the precise matching.
+- **Fix**: a stale `--resume` id survived a failed retry and was tried again on the next turn. It's dropped now.
+- **Tests** — +87 (175 total): sessions, the shared router, and the Discord adapter's surface classification, chunking and async bridge.
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — what's planned and why, with the shape each item would take: process supervision (`doctor` + restart-on-crash), a `plugins/` directory so custom commands stop sharing one file, a model fallback chain so hitting the usage limit degrades instead of failing, per-user sessions in shared channels, token-level usage. Also records what was considered and deliberately *not* planned, so the same ground isn't re-covered.
+
 ## [v1.6.2] 2026-07-14
 
 Shared checklists.

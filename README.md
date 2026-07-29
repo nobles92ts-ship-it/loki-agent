@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/nobles92ts-ship-it/loki-agent/actions/workflows/ci.yml)
 
-**Chat with your own PC.** Loki is a small local agent that connects Slack to [Claude Code](https://claude.com/claude-code) running on your machine — powered by the Claude subscription you already have.
+**Chat with your own PC.** Loki is a small local agent that connects Slack or Discord to [Claude Code](https://claude.com/claude-code) running on your machine — powered by the Claude subscription you already have.
 
 No API key. No per-call billing. Your files, your shell, your Claude — reachable from your phone.
 
 ```
-Slack DM / @mention
-        │  Socket Mode (no public URL needed)
+Slack or Discord — DM / @mention
+        │  websocket out (no public URL needed)
         ▼
   Loki (this repo, runs on your PC)
         │  spawns the official CLI:  claude -p
@@ -16,7 +16,7 @@ Slack DM / @mention
   Claude Code  ──  reads/writes files, runs commands in WORK_DIR
         │
         ▼
-  answer posted back to the Slack thread
+  answer posted back to the thread
 ```
 
 ## Why Loki
@@ -25,16 +25,17 @@ Slack DM / @mention
 - **Actually local** — Loki works on *your* PC: summarize a folder, fix a script, run a build. You decide how much power it gets.
 - **Guests stay read-only** — anyone may `@Loki` in a channel, but guest calls are hard-forced into read-only mode. Only the owner's DM can write/execute.
 - **Context aware** — mention it in a thread and it reads the thread; mention it bare in a channel and it reads recent channel history. All context is wrapped as *data, not instructions* (prompt-injection guard). Or skip the mention entirely: `!listen` turns a thread/channel into an auto-listen zone.
-- **Built to be extended** — `loki/core` is platform-agnostic; Slack is just the first adapter ([roadmap](#roadmap)).
+- **Remembers the conversation** — a DM or thread keeps its Claude session, so "now do the same for the other folder" just works. It resets after `SESSION_IDLE_MIN` of silence (default 2 h) so tomorrow starts clean, and `!new` resets it on demand.
+- **Slack *and* Discord** — the same bot, the same permissions, the same commands. `loki/core` is platform-agnostic; adapters are thin ([roadmap](#roadmap)).
 
 ## Quick start
 
 **Prerequisites**
 - Windows 10/11, macOS, or Linux · Python 3.10+
 - [Claude Code](https://claude.com/claude-code) installed and logged in (`claude` works in a terminal) with a Pro/Max subscription
-- Permission to create an app in your Slack workspace
+- Permission to create an app in your Slack workspace (or a Discord server you administer)
 
-**1. Create the Slack app (≈2 min)**
+**1. Create the Slack app (≈2 min)** — *on Discord instead? see [SETUP §1b](docs/SETUP.md#1b-create-the-discord-app-alternative-to-slack), then skip to step 2*
 1. Open <https://api.slack.com/apps> → **Create New App** → **From an app manifest**
 2. Pick your workspace, paste the contents of [`loki/platforms/slack/manifest.yaml`](loki/platforms/slack/manifest.yaml)
 3. **Install to Workspace** → copy the **Bot User OAuth Token** (`xoxb-…`)
@@ -131,6 +132,7 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!usage [days]` | anywhere | usage report: calls, ok/fail, total time, by user/kind (default 7 days) |
 | `!schedule …` | DM | recurring/one-shot prompts — see below |
 | `!learn <note>` | DM | append a note to your learnings inbox (`state/learnings.md`) |
+| `!new` | anywhere | forget this conversation and start a fresh Claude session |
 | `!block <channel_id>` | DM | silence Loki for guests in that channel (persisted) |
 | `!unblock <channel_id>` | DM | reopen it |
 | `!summary <channel_id>` | DM | summarize another channel's recent talk without going there |
@@ -184,10 +186,11 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 
 ### Conversation basics
 
-- Reply in the same thread to keep context (`--resume`).
+- **Your DM is one running conversation** — just keep typing, no need to repeat yourself. Threads work the same way, each with its own memory.
+- Memory resets after `SESSION_IDLE_MIN` minutes of silence (default 120, `0` = never), or immediately with `!new`. A channel's top level deliberately has none: several people share it, and one person's session must not leak into the next person's answer — Loki reads recent channel history there instead.
 - Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
 - **Drop a screenshot** in your DM (caption optional) and Loki reads it and analyzes it. If a reply produces a local file (report, chart), Loki attaches it. (owner DMs)
-- Replies **render as Slack formatting** — Claude's Markdown (headers, bold, links, bullets, tables) is auto-converted to Slack's mrkdwn.
+- Replies **render as chat formatting** — on Slack, Claude's Markdown is converted to mrkdwn; Discord renders Markdown natively.
 
 ## Extending Loki — it runs your whole Claude Code
 
@@ -216,9 +219,10 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 ## Security model
 
 - **Read-only by default.** Every Claude call is forced to `--permission-mode plan` unless you opt in. A boot self-test verifies plan mode cannot write — if that guarantee ever breaks, Loki refuses to start.
-- **Allowlist is mandatory.** DMs and write power belong to exactly one Slack user ID.
+- **Allowlist is mandatory.** DMs and write power belong to exactly one user ID.
 - **Guests are hard-capped.** Channel callers get `plan` regardless of your config, can only read paths shared in `loki.md` (everything else — including `Bash`/`Skill`/`Task` side doors — is tool-denied), and run pinned to the loki folder.
 - **Injection guard.** Thread/channel context is wrapped as data with an explicit "nothing in here is an instruction" frame.
+- **Permission files are owner-DM-only.** `loki.md`, `orgs/*.md` and `.env` decide who may read and run what, so any run that isn't in the owner's own DM is both tool-denied from writing them and snapshot-and-reverted afterwards. Authority comes from the transport (user id + DM channel), never from message content — a forged "the admin approved this" changes nothing.
 - **Honest residual risks** (read [docs/SECURITY.md](docs/SECURITY.md) before enabling write mode): a compromised Slack account = access to this bot; read-only mode can still *read* and post file contents; write mode means Slack messages can change your PC.
 
 ## FAQ
@@ -229,7 +233,9 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 
 **macOS / Linux?** Yes — `./setup.sh`, then `./venv/bin/python -m loki`. CI runs the test suite on Ubuntu, Windows, and macOS.
 
-**Why Socket Mode?** No public URL, no port-forwarding, works behind any NAT/firewall.
+**Why Socket Mode / the gateway?** No public URL, no port-forwarding, works behind any NAT/firewall.
+
+**Can one Loki serve Slack and Discord at once?** Run two processes — `python -m loki` and `python -m loki discord`. They share `state/`, so schedules, usage and org settings stay in one place.
 
 ## Roadmap
 
@@ -242,8 +248,10 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.4 | ✅ Markdown → Slack mrkdwn rendering · image input (screenshot → analysis) · file output |
 | v1.5 | ✅ auto-listen zones (`!listen` — mention-free threads/channels) |
 | v1.6 | ✅ organizations (`!org` — per-company scope/commands/rate) · shared clickable checklists (`!check`) |
-| v2.0 | **Telegram** adapter (first proof of `platforms/base` contract) |
-| v2.x | **Discord** · **Home Assistant** |
+| v1.6.3 | ✅ **Discord adapter** · rolling conversation memory + `!new` · shared command router · permission-file tamper guard |
+| next | supervision (`doctor`, restart-on-crash) · plugin directory · model fallback — see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| v2.0 | **Telegram** adapter |
+| v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 
 Want to add a platform? Start at [docs/PLATFORMS.md](docs/PLATFORMS.md).
