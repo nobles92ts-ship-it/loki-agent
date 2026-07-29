@@ -67,11 +67,38 @@ def read() -> dict | None:
 
 
 def pid_running(pid: int | None) -> bool:
-    """Is that process id still alive? Portable enough for our purpose."""
+    """Is that process id still alive?
+
+    ⚠ Not ``os.kill(pid, 0)``. That is the POSIX idiom, but on Windows CPython
+    implements os.kill as ``OpenProcess`` + ``TerminateProcess`` — signal 0 and
+    all — so the liveness probe would *kill the worker it was asking about*.
+    Windows gets a read-only query instead.
+    """
     if not pid:
         return False
     try:
-        os.kill(int(pid), 0)
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+
+    if os.name == "nt":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False                     # gone, or not ours to look at
+        try:
+            code = ctypes.c_ulong()
+            if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == STILL_ACTIVE
+        finally:
+            k32.CloseHandle(handle)
+
+    try:
+        os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:

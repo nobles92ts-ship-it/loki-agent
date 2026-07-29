@@ -98,3 +98,25 @@ def test_pid_running_on_self():
 def test_pid_running_on_nonsense():
     assert health.pid_running(None) is False
     assert health.pid_running(0x7FFFFFFF) is False
+    assert health.pid_running("not-a-pid") is False
+
+
+def test_probing_a_process_does_not_kill_it():
+    """Regression: the first cut used `os.kill(pid, 0)`, which on Windows is
+    OpenProcess + TerminateProcess — asking whether the worker was alive would
+    have killed it. Asking must stay read-only."""
+    import subprocess
+    import sys
+    child = subprocess.Popen([sys.executable, "-c",
+                              "import time; time.sleep(30)"],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+    try:
+        assert health.pid_running(child.pid) is True
+        for _ in range(3):                       # probe repeatedly
+            health.pid_running(child.pid)
+        assert child.poll() is None, "the liveness probe killed the process"
+    finally:
+        child.kill()
+        child.wait(timeout=5)
+    assert health.pid_running(child.pid) is False   # and it notices real death
