@@ -12,3 +12,8 @@ __pycache__/
 
 # private, workspace-specific commands (keep your real ones out of the repo)
 loki/platforms/slack/private_commands.py
+
+# your own plugins — yours, and they survive pulling upstream updates.
+# *.py.example is tracked so the shipped example still ships.
+plugins/*.py
+!plugins/*.py.example

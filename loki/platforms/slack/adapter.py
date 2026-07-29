@@ -19,8 +19,8 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from ...core import (autolisten, blocked, brain, commands, config, dedup,
-                     guard, jobs, mrkdwn, orgs, ratelimit, scheduler, scope,
-                     sessions, usage)
+                     guard, health, jobs, mrkdwn, orgs, ratelimit, scheduler,
+                     scope, sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 from . import checklists
@@ -579,6 +579,7 @@ def run() -> None:
         log.exception("auth.test failed")
         print("[loki] Slack auth failed — check SLACK_BOT_TOKEN.", file=sys.stderr)
         sys.exit(2)
+    health.start("slack")
     jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
     scheduler.start(_fire_schedule)
     log.info("worker starting allowlist=%s work_dir=%s mode=%s lang=%s conc=%s",

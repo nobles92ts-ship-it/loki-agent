@@ -1,0 +1,42 @@
+"""Example plugin — copy to `status.py` (drop the .example) to enable it.
+
+One file = one command. Loki discovers every `*.py` in this folder at boot;
+files starting with `_` are treated as helpers and skipped.
+
+See docs/PLUGINS.md for the full contract.
+"""
+import shutil
+
+# Required: the pattern that triggers this command. Matched case-insensitively
+# against the message with mentions already stripped.
+MATCH = r"^!disk(?:\s+(\S+))?$"
+
+# Optional: shown by `!plugins`.
+HELP = "!disk [path] — free space where Loki runs"
+
+# Optional, defaults to True. Leave it True unless you mean to open the command
+# to non-owners — and even then, only orgs granted it explicitly
+# (`!org allow <org> disk`) can run it.
+OWNER_ONLY = True
+
+# Optional: the name used by `!plugins` and `!org allow`. Defaults to the
+# filename.
+NAME = "disk"
+
+
+def handle(match, ctx):
+    """Return the text to post, or None to decline (the message then falls
+    through to a normal chat request).
+
+    `match` is the regex match. `ctx` is the same dict core.commands documents:
+    channel, thread, session_key, is_dm, is_owner, org, name_of, user_ids, …
+    """
+    path = match.group(1) or "."
+    try:
+        total, used, free = shutil.disk_usage(path)
+    except OSError as e:
+        return f"⚠️ `{path}`: {e}"
+    gb = 1024 ** 3
+    pct = used / total * 100 if total else 0
+    return (f"💽 `{path}` — {free / gb:.1f} GB free "
+            f"of {total / gb:.1f} GB ({pct:.0f}% used)")

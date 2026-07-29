@@ -18,8 +18,8 @@ import re
 import time
 from typing import Callable
 
-from . import (autolisten, blocked, config, jobs, learn, orgs, scheduler,
-               sessions, usage)
+from . import (autolisten, blocked, config, jobs, learn, orgs, plugins,
+               scheduler, sessions, usage)
 from .config import t
 
 # Command surface. Korean aliases sit alongside the English ones so a Korean
@@ -35,6 +35,7 @@ NEW_RE = re.compile(r"^!(?:new|새대화|리셋)$", re.IGNORECASE)
 LISTEN_RE = re.compile(r"^!(?:listen|청취)$", re.IGNORECASE)
 UNLISTEN_RE = re.compile(r"^!(?:unlisten|청취해제)$", re.IGNORECASE)
 LISTENING_RE = re.compile(r"^!(?:listening|청취목록)$", re.IGNORECASE)
+PLUGINS_RE = re.compile(r"^!(?:plugins|플러그인)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
     r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
@@ -43,7 +44,38 @@ STOP_WORDS = ("!stop", "!cancel", "중지", "!중지")
 
 
 def handle(text: str, ctx: dict) -> str | None:
-    """Run an owner command. Returns the reply text, or None if `text` isn't one.
+    """Run a command. Returns the reply text, or None if `text` isn't one.
+
+    Two tiers, in this order:
+
+    1. the built-in vocabulary below — **owner only**, gated here so an adapter
+       cannot forget the check
+    2. this install's own plugins (:mod:`loki.core.plugins`), which carry their
+       own permissions
+
+    Built-ins win, so no plugin can shadow ``!stop`` or ``!org``.
+    """
+    text = (text or "").strip()
+    if ctx.get("is_owner"):
+        reply = _builtin(text, ctx)
+        if reply is not None:
+            return reply
+    return plugins.handle(text, ctx)
+
+
+def _fmt_plugins() -> str:
+    items = plugins.listing()
+    if not items:
+        return t("plugins_none", path=plugins.plugins_dir())
+    lines = [t("plugins_header", n=len(items))]
+    for name, help_text, owner_only in items:
+        who = "🔒" if owner_only else "👥"
+        lines.append(f"• {who} `{name}`" + (f" — {help_text}" if help_text else ""))
+    return "\n".join(lines)
+
+
+def _builtin(text: str, ctx: dict) -> str | None:
+    """The shipped commands. Owner-gated by the caller.
 
     ``ctx`` keys:
       ``channel``       current channel id
@@ -55,14 +87,7 @@ def handle(text: str, ctx: dict) -> str | None:
       ``user_ids``      user ids the caller referenced (the bot's own excluded)
       ``is_user_id``    does this bare token look like a user id?
       ``is_channel_id`` does this bare token look like a channel id?
-
-    Owner-gated as a whole: guests never reach a handler, so an adapter cannot
-    forget the check.
     """
-    if not ctx.get("is_owner"):
-        return None
-    text = (text or "").strip()
-
     m = BLOCK_RE.match(text)
     if m:
         blocked.set_blocked(m.group(1), True)
@@ -98,6 +123,8 @@ def handle(text: str, ctx: dict) -> str | None:
         return t(autolisten.remove(ctx["channel"], ctx.get("thread")))
     if LISTENING_RE.match(text):
         return fmt_listening()
+    if PLUGINS_RE.match(text):
+        return _fmt_plugins()
     m = ORG_RE.match(text)
     if m:
         return org_cmd(m.group(1), ctx)

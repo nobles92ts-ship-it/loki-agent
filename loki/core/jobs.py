@@ -14,7 +14,7 @@ import threading
 import time
 from typing import Callable
 
-from . import config
+from . import config, health
 from .config import log
 
 JOBS: "queue.Queue[dict]" = queue.Queue()
@@ -130,6 +130,9 @@ def start(handler: Callable[[dict], None],
                     with _reg_lock:
                         _registry.pop(job.get("id", ""), None)
                         _active_convs.discard(conv)
+                    # One place for both adapters — proof the worker is not
+                    # merely connected but actually completing work.
+                    health.beat(job_done=True)
             finally:
                 q.task_done()
 

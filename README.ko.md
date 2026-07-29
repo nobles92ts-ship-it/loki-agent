@@ -140,6 +140,7 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 | `!unlisten` / `!청취해제` | 스레드/채널 | 자동청취 해제 (좁은 존부터) |
 | `!listening` / `!청취목록` | 어디서든 | 자동청취 중인 존 목록 |
 | `!org …` / `!조직 …` | 어디서든 | [조직](#조직--회사별-조회-범위명령rate) 관리: `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
+| `!plugins` / `!플러그인` | 어디서든 | 직접 설치한 명령 목록 — [docs/PLUGINS.md](docs/PLUGINS.md) |
 | `!check <항목들>` / `!체크` | 어디서든 | [공유 체크리스트](#체크리스트) — 한 줄에 한 항목(쉼표 구분도 OK), 첫 줄이 `:`로 끝나면 제목. ☐/☑ 눌러 토글(모두에게 동기화) 또는 `완료 N`. 오너가 생성, 보는 사람 누구나 토글 |
 
 **자동청취 존** — 작업 스레드에서 매번 @멘션하기 귀찮다면, 그 스레드에서 `@Loki !listen` 한 번이면 이후 거기 있는 모두가 멘션 없이 Loki랑 대화한다(그룹 DM 느낌). 권한은 그대로: 게스트는 여전히 읽기전용+rate limit, `!block`이 존보다 우선, 멘션 메시지는 이중응답 없이 한 번만, 봇 메시지는 무시(루프 방지). 주의 — 존 안에선 **모든** 사람 메시지가 Claude 호출이 되니, 바쁜 채널보단 작업 스레드에 추천.
@@ -189,6 +190,27 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 - 채널 초대는 `/invite @Loki` — 오너 DM으로 알림 + 원탭 `!block` 힌트가 온다.
 - **스크린샷을 DM에 던지면** Loki가 읽어서 분석한다(설명 없이 이미지만 보내도 됨). 답변 과정에서 파일(리포트·차트)이 생기면 스레드에 첨부한다. (오너 DM)
 - 답변은 **채팅 서식으로 렌더링** — Slack에서는 Claude의 마크다운을 mrkdwn으로 변환하고, Discord는 마크다운을 그대로 렌더한다.
+
+### 계속 돌게 하기
+
+Loki는 내 PC에서 도는 프로세스다. 그러니 진짜 질문은 "지금 살아 있나?"다.
+
+```bash
+python -m loki status            # 지금 떠 있나? (하트비트만 확인, 네트워크 안 씀)
+python -m loki doctor            # 설치 상태 전체 점검 + 생존 확인
+python -m loki gateway install   # 로그인 시 자동 시작 + 죽으면 재기동
+python -m loki gateway ensure    # 안 떠 있을 때만 띄움
+python -m loki gateway restart   # 껐다 켜기
+```
+
+`gateway install`은 OS가 이미 가진 수단에 Loki를 등록한다 — Windows는 예약 작업
+(+ 5분 감시 작업. Windows는 작업을 시작해주긴 해도 죽은 걸 되살리진 않으므로),
+Linux는 `Restart=on-failure` systemd 유저 유닛, macOS는 `KeepAlive` launchd 에이전트.
+해제는 `gateway uninstall`.
+
+워커는 타이머와 작업 완료 시마다 `state/health.json`에 생존 신호를 남긴다.
+`status`는 **프로세스가 사라졌을 때뿐 아니라 신호가 끊겼을 때도** 죽음으로 판정한다 —
+떠 있지만 멈춰버린 워커는 종료된 워커와 똑같이 고장난 것이기 때문.
 
 ## Loki 확장하기 — 네 Claude Code 전체가 돌아간다
 
@@ -247,7 +269,8 @@ Loki → ✅ 완료 — 시트 확인해줘.
 | v1.5 | ✅ 자동청취 존(`!listen` — 멘션 없는 스레드/채널) |
 | v1.6 | ✅ 조직(`!org` — 회사별 조회범위/명령/rate) · 공유 클릭형 체크리스트(`!check`) |
 | v1.6.3 | ✅ **Discord 어댑터** · 이어지는 대화 맥락 + `!new` · 공용 명령 라우터 · 권한 파일 변조 가드 |
-| 다음 | 프로세스 감독(`doctor`·자동 재기동) · 플러그인 디렉터리 · 모델 폴백 — [docs/ROADMAP.md](docs/ROADMAP.md) |
+| v1.6.4 | ✅ **프로세스 감독**(`status`·`doctor`·`gateway`, 하트비트, 죽으면 재기동) · **플러그인**(`plugins/`, 명령 하나=파일 하나) |
+| 다음 | 채널 사용자별 세션 · 토큰 단위 사용량 — [docs/ROADMAP.md](docs/ROADMAP.md) |
 | v2.0 | **Telegram** 어댑터 |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
