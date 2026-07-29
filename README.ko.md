@@ -203,10 +203,13 @@ python -m loki gateway ensure    # 안 떠 있을 때만 띄움
 python -m loki gateway restart   # 껐다 켜기
 ```
 
-`gateway install`은 OS가 이미 가진 수단에 Loki를 등록한다 — Windows는 예약 작업
-(+ 5분 감시 작업. Windows는 작업을 시작해주긴 해도 죽은 걸 되살리진 않으므로),
-Linux는 `Restart=on-failure` systemd 유저 유닛, macOS는 `KeepAlive` launchd 에이전트.
-해제는 `gateway uninstall`.
+`gateway install`은 OS가 이미 가진 수단에 Loki를 등록한다 — Windows는 시작프로그램
+런처 + 5분 감시 예약작업(**관리자 권한 불필요**), Linux는 `Restart=on-failure`
+systemd 유저 유닛, macOS는 `KeepAlive` launchd 에이전트. 해제는 `gateway uninstall`.
+
+⚠️ 예전에 `setup.ps1 -Autostart`를 돌렸다면 같은 폴더에 런처가 이미 하나 있다.
+**런처가 2개면 같은 앱 토큰으로 워커가 2개 떠서 이벤트가 갈린다** — Loki가 메시지를
+랜덤하게 무시하는 것처럼 보인다. 옛 것을 지울 것.
 
 워커는 타이머와 작업 완료 시마다 `state/health.json`에 생존 신호를 남긴다.
 `status`는 **프로세스가 사라졌을 때뿐 아니라 신호가 끊겼을 때도** 죽음으로 판정한다 —

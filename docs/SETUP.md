@@ -129,9 +129,18 @@ python -m loki gateway install
 
 | OS | What it registers | Restart on crash |
 |---|---|---|
-| Windows | Scheduled Task at logon + a 5-minute watchdog task | the watchdog (`gateway ensure`) — Windows starts tasks but won't restart a crashed one |
+| Windows | a launcher in your Startup folder + a 5-minute Scheduled Task | the task runs `gateway ensure`, which starts Loki only if it's down |
 | Linux | systemd user unit | `Restart=on-failure` |
 | macOS | launchd agent | `KeepAlive` |
+
+⚠️ **Windows: no administrator needed.** The Startup folder is used instead of
+a task with an `ONLOGON` trigger precisely because that trigger requires
+elevation, and a chat bot's setup has no business asking for it.
+
+If you previously ran `setup.ps1 -Autostart`, that wrote its own launcher into
+the same folder. Delete the old one — **two launchers means two workers on one
+app token, and the platform will split events between them**, which looks like
+Loki randomly ignoring messages.
 
 Undo with `gateway uninstall`. Check on it any time:
 

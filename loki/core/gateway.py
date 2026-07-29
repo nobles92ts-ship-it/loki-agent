@@ -151,28 +151,60 @@ def _vbs(name: str, args: str, windowless: bool) -> Path:
     return path
 
 
+def _startup_link() -> Path:
+    """The per-user Startup folder entry — no elevation required, unlike a
+    scheduled task with an ONLOGON trigger."""
+    appdata = os.environ.get("APPDATA", "")
+    return (Path(appdata) / "Microsoft" / "Windows" / "Start Menu" /
+            "Programs" / "Startup" / "Loki_Agent.vbs")
+
+
 def _install_windows() -> int:
+    """Autostart via the Startup folder, crash recovery via a repeating task.
+
+    Deliberately avoids ``/SC ONLOGON``: that trigger needs administrator
+    rights, and asking a chat bot's setup to run elevated is a bad trade for
+    something the Startup folder does for free.
+    """
     start_vbs = _vbs("loki_start.vbs", "-m loki", True)
     ensure_vbs = _vbs("loki_ensure.vbs", "-m loki gateway ensure", True)
-    rc1, out1 = _run(["schtasks", "/Create", "/TN", TASK_MAIN, "/SC", "ONLOGON",
-                      "/TR", f'wscript.exe "{start_vbs}"', "/F"])
-    rc2, out2 = _run(["schtasks", "/Create", "/TN", TASK_WATCHDOG, "/SC",
-                      "MINUTE", "/MO", str(WATCHDOG_MINUTES),
-                      "/TR", f'wscript.exe "{ensure_vbs}"', "/F"])
-    if rc1 or rc2:
-        print(f"[X ] schtasks failed:\n    {out1}\n    {out2}")
-        return 1
-    print(f"[OK] '{TASK_MAIN}' — starts Loki at logon")
-    print(f"[OK] '{TASK_WATCHDOG}' — restarts it within "
-          f"{WATCHDOG_MINUTES} min if it dies")
+
+    ok = True
+    try:
+        link = _startup_link()
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.write_text(start_vbs.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"[OK] '{link.name}' in Startup — starts Loki at login")
+    except Exception as e:                                  # noqa: BLE001
+        print(f"[X ] could not write the Startup entry: {e}")
+        ok = False
+
+    rc, out = _run(["schtasks", "/Create", "/TN", TASK_WATCHDOG, "/SC",
+                    "MINUTE", "/MO", str(WATCHDOG_MINUTES),
+                    "/TR", f'wscript.exe "{ensure_vbs}"', "/F"])
+    if rc:
+        print(f"[X ] watchdog task failed: {out}")
+        ok = False
+    else:
+        print(f"[OK] '{TASK_WATCHDOG}' — checks every {WATCHDOG_MINUTES} min "
+              "and restarts Loki if it died")
+
     print("     remove with:  python -m loki gateway uninstall")
-    return 0
+    return 0 if ok else 1
 
 
 def _uninstall_windows() -> int:
-    for task in (TASK_MAIN, TASK_WATCHDOG):
-        rc, out = _run(["schtasks", "/Delete", "/TN", task, "/F"])
-        print(f"[OK] removed '{task}'" if rc == 0 else f"[i ] '{task}': {out}")
+    rc, out = _run(["schtasks", "/Delete", "/TN", TASK_WATCHDOG, "/F"])
+    print(f"[OK] removed '{TASK_WATCHDOG}'" if rc == 0
+          else f"[i ] '{TASK_WATCHDOG}': {out}")
+    # TASK_MAIN existed in an earlier cut that used an ONLOGON trigger; remove
+    # it too so upgrading installs don't leave a stray task behind.
+    _run(["schtasks", "/Delete", "/TN", TASK_MAIN, "/F"])
+    try:
+        _startup_link().unlink(missing_ok=True)
+        print("[OK] removed the Startup entry")
+    except Exception as e:                                  # noqa: BLE001
+        print(f"[i ] Startup entry: {e}")
     return 0
 
 
