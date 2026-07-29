@@ -90,6 +90,8 @@ MSG: dict[str, dict[str, str]] = {
                        "• `!schedule once YYYY-MM-DD HH:MM <prompt>`\n"
                        "• `!schedule list` · `!schedule remove s1`"),
         "learn_saved": "🧠 Noted — {n} item(s) in the learnings inbox (state/learnings.md).",
+        "session_reset": "🆕 Fresh start — I've dropped this conversation's memory.",
+        "session_reset_none": "Already a fresh conversation — nothing to drop.",
         "rate_limited": ("🚦 You've hit the guest limit ({n}/hour). "
                          "Try again in ~{m} min."),
         "image_default": "Analyze the attached image(s).",
@@ -101,6 +103,11 @@ MSG: dict[str, dict[str, str]] = {
                     "within the paths you shared in loki.md.\n"
                     "To shut this channel off, DM me: `!block {cid}` — or bind "
                     "it to an org's scope: `!org bind <org> {cid}`"),
+        "invited_guild": ("📥 Added to a new server: *{name}*\n"
+                          "By default anyone there can @mention me — read-only, "
+                          "and only within the paths you shared in loki.md.\n"
+                          "To shut one channel off, DM me: `!block <channel_id>` "
+                          "— or bind it to an org: `!org bind <org> <channel_id>`"),
         "blocked": "🔒 Channel {cid} blocked — guests can't use me there anymore.",
         "unblocked": "🔓 Channel {cid} unblocked.",
         "listen_thread": "🎧 Now listening to this thread — no mention needed. (stop: `!unlisten`)",
@@ -156,6 +163,15 @@ MSG: dict[str, dict[str, str]] = {
         "check_owner_only": "Only the owner can create a checklist.",
         "check_none": "No checklist here yet — make one with `!check <items>`.",
         "check_post_fail": "⚠️ Couldn't post the checklist — check the logs.",
+        "tamper_blocked": ("🚨 This run tried to change a permission file. It was "
+                           "reverted and the owner was notified — permissions "
+                           "only change in the owner's DM."),
+        "tamper_alert": ("🚨 *A permission file was about to change* — reverted.\n"
+                         "• Files: `{files}`\n"
+                         "• Permissions only change from the *owner's DM*. This "
+                         "attempt was not applied.\n"
+                         "• Check the command or thread you just ran for an "
+                         "injection (see the TAMPER lines in `state/worker.log`)."),
         "kind_thread": "thread",
         "kind_channel": "channel",
         "scope_thread": "full thread",
@@ -206,6 +222,8 @@ MSG: dict[str, dict[str, str]] = {
                        "• `!schedule once YYYY-MM-DD HH:MM <할 일>`\n"
                        "• `!schedule list` · `!schedule remove s1`"),
         "learn_saved": "🧠 기록했어 — 인박스에 {n}건 대기 중 (state/learnings.md).",
+        "session_reset": "🆕 새로 시작할게 — 이 대화의 이전 맥락은 잊었어.",
+        "session_reset_none": "이미 새 대화야 — 지울 맥락이 없어.",
         "rate_limited": ("🚦 게스트 사용 한도에 도달했어 (시간당 {n}회). "
                          "약 {m}분 후 다시 시도해줘."),
         "image_default": "첨부한 이미지를 분석해줘.",
@@ -217,6 +235,11 @@ MSG: dict[str, dict[str, str]] = {
                     "경로 안에서만.\n"
                     "이 채널을 막으려면 DM으로 `!block {cid}`, 조직 범위로 열려면 "
                     "`!org bind <조직> {cid}` 보내줘."),
+        "invited_guild": ("📥 새 서버에 들어왔어: *{name}*\n"
+                          "기본으로 거기서 누구나 나를 멘션할 수 있어 — 읽기전용, "
+                          "loki.md에 공개한 경로 안에서만.\n"
+                          "특정 채널을 막으려면 DM으로 `!block <채널ID>`, 조직 범위로 "
+                          "열려면 `!org bind <조직> <채널ID>` 보내줘."),
         "blocked": "🔒 채널 {cid} 막았어. 이제 거기선 나 말고 아무도 못 써.",
         "unblocked": "🔓 채널 {cid} 다시 풀었어.",
         "listen_thread": "🎧 이제 이 스레드는 멘션 없이 들을게. (해제: `!unlisten`)",
@@ -270,6 +293,14 @@ MSG: dict[str, dict[str, str]] = {
         "check_owner_only": "체크리스트 생성은 오너만 할 수 있어.",
         "check_none": "여기엔 아직 체크리스트가 없어 — `!check <항목들>`로 만들어줘.",
         "check_post_fail": "⚠️ 체크리스트를 못 올렸어 — 로그 확인해줘.",
+        "tamper_blocked": ("🚨 이번 실행이 권한 파일을 바꾸려 했어. 되돌렸고 오너에게 "
+                           "알렸어 — 권한 변경은 오너 DM에서만 가능해."),
+        "tamper_alert": ("🚨 *권한 파일이 변경되려 했어* — 되돌렸어.\n"
+                         "• 대상: `{files}`\n"
+                         "• 권한 변경은 *오너 DM*에서만 가능해. 이 시도는 반영되지 "
+                         "않았어.\n"
+                         "• 방금 실행한 명령/스레드 내용에 주입이 있었는지 확인해줘 "
+                         "(`state/worker.log` 의 TAMPER 줄)."),
         "kind_thread": "스레드",
         "kind_channel": "채널",
         "scope_thread": "전체",
@@ -327,6 +358,12 @@ CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
 # Guest throttle: max requests per rolling hour per non-owner user (protects
 # your subscription limits). 0 = unlimited. Owners are never throttled.
 GUEST_RATE_PER_HOUR = max(0, int(os.environ.get("GUEST_RATE_PER_HOUR", "10")))
+
+# Conversation memory: a DM or thread keeps its Claude session — so follow-up
+# messages continue instead of starting over — until this many minutes of
+# silence. Longer means better continuity but a heavier context on every turn.
+# 0 = never expire. `!new` resets one conversation on demand regardless.
+SESSION_IDLE_MIN = max(0, int(os.environ.get("SESSION_IDLE_MIN", "120")))
 
 # permission mode: "plan" = read-only (safe default) · "bypassPermissions" = full
 # write/execute on this machine. Set via .env (CLAUDE_PERMISSION_MODE).

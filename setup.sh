@@ -41,15 +41,32 @@ if [ -f .env ]; then
 fi
 if [ "$write_env" = 1 ]; then
     echo ""
-    echo "Paste the two tokens from your Slack app (api.slack.com/apps):"
-    while :; do read -r -p "  Bot User OAuth Token (xoxb-...): " bot
-        case "$bot" in xoxb-*) break ;; esac; done
-    while :; do read -r -p "  App-Level Token      (xapp-...): " apptok
-        case "$apptok" in xapp-*) break ;; esac; done
+    echo "Which chat platform? (docs/SETUP.md step 1)"
+    echo "  1) Slack    2) Discord"
+    read -r -p "  Choose (default: 1): " pick
+    case "$pick" in 2) platform=discord ;; *) platform=slack ;; esac
     echo ""
-    echo "Your Slack member ID (Slack profile -> ... -> Copy member ID):"
-    while :; do read -r -p "  ALLOWED_USER_ID (U...): " owner
-        case "$owner" in U*|W*) break ;; esac; done
+    if [ "$platform" = discord ]; then
+        echo "From your Discord app (discord.com/developers/applications):"
+        echo "  NOTE: Bot -> Privileged Gateway Intents -> MESSAGE CONTENT must be ON."
+        while :; do read -r -p "  Bot Token: " bot
+            [ "${#bot}" -ge 40 ] && break; done
+        echo ""
+        echo "Your Discord user ID (Settings -> Advanced -> Developer Mode,"
+        echo "then right-click your name -> Copy User ID):"
+        while :; do read -r -p "  DISCORD_OWNER_ID: " owner
+            case "$owner" in ''|*[!0-9]*) ;; *) [ "${#owner}" -ge 15 ] && break ;; esac; done
+    else
+        echo "Paste the two tokens from your Slack app (api.slack.com/apps):"
+        while :; do read -r -p "  Bot User OAuth Token (xoxb-...): " bot
+            case "$bot" in xoxb-*) break ;; esac; done
+        while :; do read -r -p "  App-Level Token      (xapp-...): " apptok
+            case "$apptok" in xapp-*) break ;; esac; done
+        echo ""
+        echo "Your Slack member ID (Slack profile -> ... -> Copy member ID):"
+        while :; do read -r -p "  ALLOWED_USER_ID (U...): " owner
+            case "$owner" in U*|W*) break ;; esac; done
+    fi
     echo ""
     while :; do read -r -p "  WORK_DIR - the folder Claude works in (e.g. $HOME/work): " workdir
         [ -n "$workdir" ] && [ -d "$workdir" ] && break
@@ -78,10 +95,14 @@ if [ "$write_env" = 1 ]; then
     read -r -p "  Max guest requests per hour, 0 = unlimited (default 10): " rate
     case "$rate" in ''|*[!0-9]*) rate=10 ;; esac
     {
+        printf 'LOKI_PLATFORM=%s\n' "$platform"
+        if [ "$platform" = discord ]; then
+            printf '%s\n' "DISCORD_BOT_TOKEN=$bot" "DISCORD_OWNER_ID=$owner"
+        else
+            printf '%s\n' "SLACK_BOT_TOKEN=$bot" "SLACK_APP_TOKEN=$apptok" \
+                "ALLOWED_USER_ID=$owner"
+        fi
         printf '%s\n' \
-            "SLACK_BOT_TOKEN=$bot" \
-            "SLACK_APP_TOKEN=$apptok" \
-            "ALLOWED_USER_ID=$owner" \
             "WORK_DIR=$workdir" \
             "CLAUDE_PERMISSION_MODE=$permission" \
             "GUEST_RATE_PER_HOUR=$rate" \
@@ -91,8 +112,8 @@ if [ "$write_env" = 1 ]; then
     echo "[OK] .env written"
 fi
 
-# ── 4. Slack connection smoke test ───────────────────────────────────────────
-echo "[..] Testing Slack auth…"
+# ── 4. connection smoke test ─────────────────────────────────────────────────
+echo "[..] Testing bot auth…"
 if ! ./venv/bin/python tools/diag.py; then
     echo "[X] Diagnostics failed - fix the items above and re-run ./setup.sh"
     exit 1
@@ -100,7 +121,7 @@ fi
 
 echo ""
 echo "Done. Start Loki with:"
-echo "    ./venv/bin/python -m loki"
+echo "    ./venv/bin/python -m loki           # or: -m loki discord"
 echo "Keep it running in the background:"
 echo "    nohup ./venv/bin/python -m loki >/dev/null 2>&1 &"
 echo "(systemd / launchd autostart examples: docs/SETUP.md)"

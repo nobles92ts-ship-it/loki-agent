@@ -1,8 +1,10 @@
 """Job queue — bounded concurrency, per-conversation ordering, cancel by id.
 
 N worker threads (JOB_CONCURRENCY) drain one queue. Jobs that belong to the
-same conversation (thread) never overlap — a later message in the same thread
-waits for the earlier one, so --resume session continuity stays intact.
+same conversation never overlap — a later message waits for the earlier one,
+so the two never resume the same Claude session at the same time. The
+conversation is the job's ``session_key`` when it has one (see core.sessions),
+otherwise its thread.
 """
 from __future__ import annotations
 
@@ -16,10 +18,6 @@ from . import config
 from .config import log
 
 JOBS: "queue.Queue[dict]" = queue.Queue()
-
-# conversation key (e.g. thread ts) -> claude session_id, for --resume continuity
-sessions: dict[str, str] = {}
-sess_lock = threading.Lock()
 
 _reg_lock = threading.Lock()
 _registry: dict[str, dict] = {}      # job id -> job dict (queued/running only)
@@ -103,7 +101,7 @@ def start(handler: Callable[[dict], None],
         while True:
             job = q.get()
             try:
-                conv = job.get("thread") or ""
+                conv = job.get("session_key") or job.get("thread") or ""
                 with _reg_lock:
                     if job.get("status") == "cancelled":
                         _registry.pop(job.get("id", ""), None)

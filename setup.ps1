@@ -8,7 +8,7 @@ $root = $PSScriptRoot
 
 Write-Host ""
 Write-Host "==============================================" -ForegroundColor DarkCyan
-Write-Host "  Loki setup — your Claude Code, on Slack"      -ForegroundColor Cyan
+Write-Host "  Loki setup — your Claude Code, on chat"       -ForegroundColor Cyan
 Write-Host "==============================================" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -47,12 +47,27 @@ if (Test-Path $envPath) {
 }
 if ($writeEnv) {
     Write-Host ""
-    Write-Host "Paste the two tokens from your Slack app (api.slack.com/apps):" -ForegroundColor Cyan
-    do { $bot = Read-Host "  Bot User OAuth Token (xoxb-...)" } until ($bot -like 'xoxb-*')
-    do { $app = Read-Host "  App-Level Token      (xapp-...)" } until ($app -like 'xapp-*')
+    Write-Host "Which chat platform? (docs/SETUP.md step 1)" -ForegroundColor Cyan
+    Write-Host "  1) Slack    2) Discord"
+    $pick = Read-Host "  Choose (default: 1)"
+    $platform = if ($pick -eq '2') { 'discord' } else { 'slack' }
     Write-Host ""
-    Write-Host "Your Slack member ID (Slack profile -> ... -> Copy member ID):" -ForegroundColor Cyan
-    do { $owner = Read-Host "  ALLOWED_USER_ID (U...)" } until ($owner -match '^[UW][A-Z0-9]{6,}$')
+    if ($platform -eq 'discord') {
+        Write-Host "From your Discord app (discord.com/developers/applications):" -ForegroundColor Cyan
+        Write-Host "  NOTE: Bot -> Privileged Gateway Intents -> MESSAGE CONTENT must be ON."
+        do { $bot = Read-Host "  Bot Token" } until ($bot.Trim().Length -ge 40)
+        Write-Host ""
+        Write-Host "Your Discord user ID (Settings -> Advanced -> Developer Mode," -ForegroundColor Cyan
+        Write-Host "then right-click your name -> Copy User ID):"
+        do { $owner = Read-Host "  DISCORD_OWNER_ID" } until ($owner -match '^\d{15,20}$')
+    } else {
+        Write-Host "Paste the two tokens from your Slack app (api.slack.com/apps):" -ForegroundColor Cyan
+        do { $bot = Read-Host "  Bot User OAuth Token (xoxb-...)" } until ($bot -like 'xoxb-*')
+        do { $app = Read-Host "  App-Level Token      (xapp-...)" } until ($app -like 'xapp-*')
+        Write-Host ""
+        Write-Host "Your Slack member ID (Slack profile -> ... -> Copy member ID):" -ForegroundColor Cyan
+        do { $owner = Read-Host "  ALLOWED_USER_ID (U...)" } until ($owner -match '^[UW][A-Z0-9]{6,}$')
+    }
     Write-Host ""
     do {
         $workDir = Read-Host "  WORK_DIR - the folder Claude works in (e.g. $HOME\Documents)"
@@ -81,10 +96,13 @@ if ($writeEnv) {
     $rate = Read-Host "  Max guest requests per hour, 0 = unlimited (default 10)"
     if ($rate -notmatch '^\d+$') { $rate = '10' }
 
-    $lines = @(
-        "SLACK_BOT_TOKEN=$bot",
-        "SLACK_APP_TOKEN=$app",
-        "ALLOWED_USER_ID=$owner",
+    $lines = @("LOKI_PLATFORM=$platform")
+    if ($platform -eq 'discord') {
+        $lines += "DISCORD_BOT_TOKEN=$bot", "DISCORD_OWNER_ID=$owner"
+    } else {
+        $lines += "SLACK_BOT_TOKEN=$bot", "SLACK_APP_TOKEN=$app", "ALLOWED_USER_ID=$owner"
+    }
+    $lines += @(
         "WORK_DIR=$workDir",
         "CLAUDE_PERMISSION_MODE=$permission",
         "GUEST_RATE_PER_HOUR=$rate",
@@ -95,8 +113,8 @@ if ($writeEnv) {
     Write-Host "[OK] .env written"
 }
 
-# ── 4. Slack connection smoke test ──────────────────────────────────────────
-Write-Host "[..] Testing Slack auth…"
+# ── 4. connection smoke test ────────────────────────────────────────────────
+Write-Host "[..] Testing bot auth…"
 $smoke = & "$root\venv\Scripts\python.exe" "$root\tools\diag.py" 2>&1
 $smoke | ForEach-Object { Write-Host "    $_" }
 if ($LASTEXITCODE -ne 0) {
@@ -119,5 +137,5 @@ Write-Host ""
 Write-Host "Done. Start Loki with:" -ForegroundColor Green
 Write-Host "    .\venv\Scripts\python.exe -m loki"
 Write-Host "or double-click run_worker.vbs (background, no console)."
-Write-Host "Then DM your bot in Slack: hello"
+Write-Host "Then DM your bot: hello"
 Write-Host ""

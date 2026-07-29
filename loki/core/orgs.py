@@ -6,7 +6,7 @@ next request (mtime cache), fail-closed when missing or unparseable.
 
 Sections::
 
-    ## Members        - U0…   explicit Slack user ids
+    ## Members        - U0…   explicit user ids (whatever the platform uses)
     ## Channels       - C0…   bound channels (every non-owner there = this org)
     ## Commands       - name  fixed !commands this org may trigger
     ## Settings       - rate: N    per-hour override of GUEST_RATE_PER_HOUR
@@ -28,8 +28,12 @@ from . import config
 from .config import log
 
 NAME_RE = re.compile(r"^[A-Za-z0-9가-힣_-]{1,32}$")
-_USER_RE = re.compile(r"^[UW][A-Z0-9]{4,}$")
-_CHAN_RE = re.compile(r"^[CG][A-Z0-9]{4,}$")
+# Platform ids — Slack's `U…`/`W…` and `C…`/`G…`, Discord's numeric snowflakes,
+# Telegram's (negative for groups) chat ids. Deliberately generic: core must not
+# know any one platform's id shape, or a second adapter silently rejects every
+# member it is given. Adapters filter candidates before they reach here, so this
+# is the backstop against writing prose into an org file, not the real gate.
+_ID_RE = re.compile(r"^-?[A-Za-z0-9_]{4,32}$")
 _CMD_TOKEN_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 _RATE_RE = re.compile(r"^\s*-\s*rate\s*:\s*(\d{1,5})\s*$",
                       re.IGNORECASE | re.MULTILINE)
@@ -39,7 +43,8 @@ _ITEM_RE = re.compile(r"^\s*-\s+`?(\S+?)`?(?:\s|$)")
 ORG_TEMPLATE = """# Org: {name}
 
 ## Members
-<!-- explicit members — one Slack user id per line, e.g. -->
+<!-- explicit members — one user id per line (Slack U012ABCDEF, Discord
+     123456789012345678, …), e.g. -->
 <!-- - U012ABCDEF -->
 
 ## Channels
@@ -110,8 +115,8 @@ def _parse(text: str) -> dict:
     if m:
         rate = max(0, int(m.group(1)))
     return {
-        "members": _items(s.get("members", []), _USER_RE),
-        "channels": _items(s.get("channels", []), _CHAN_RE),
+        "members": _items(s.get("members", []), _ID_RE),
+        "channels": _items(s.get("channels", []), _ID_RE),
         "commands": _items(s.get("commands", []), _CMD_TOKEN_RE, lower=True),
         "rate": rate,
         "guide": "\n".join(s.get("org guide", [])).strip(),
@@ -274,7 +279,7 @@ def _edit_section(name: str, section: str, add: str | None = None,
 
 def add_member(name: str, uid: str, label: str = "") -> bool:
     o = get(name)
-    if o is None or not _USER_RE.match(uid or "") or uid in o["members"]:
+    if o is None or not _ID_RE.match(uid or "") or uid in o["members"]:
         return False
     note = f"   <!-- {label} -->" if label else ""
     return _edit_section(name, "members", add=f"- {uid}{note}")
@@ -286,7 +291,7 @@ def remove_member(name: str, uid: str) -> bool:
 
 def bind(name: str, cid: str) -> bool:
     o = get(name)
-    if o is None or not _CHAN_RE.match(cid or "") or cid in o["channels"]:
+    if o is None or not _ID_RE.match(cid or "") or cid in o["channels"]:
         return False
     return _edit_section(name, "channels", add=f"- {cid}")
 

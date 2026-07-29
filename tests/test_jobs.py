@@ -55,6 +55,39 @@ def test_same_conversation_is_serial(fresh):
     assert events.index(("end", first)) < events.index(("start", second))
 
 
+def test_same_session_is_serial_across_threads(fresh):
+    """Two top-level DMs are separate 'threads' but one conversation. They must
+    not run at once, or both would resume the same Claude session."""
+    events = []
+
+    def handler(job):
+        events.append(("start", job["id"]))
+        time.sleep(0.25)
+        events.append(("end", job["id"]))
+
+    jobs.start(handler, lambda j, e: None, concurrency=2)
+    j1, _ = jobs.submit({"thread": "111.1", "session_key": "dm:D1", "text": "a"})
+    j2, _ = jobs.submit({"thread": "222.2", "session_key": "dm:D1", "text": "b"})
+    assert _wait(lambda: len(events) == 4, 6)
+    first, second = (j1, j2) if events[0] == ("start", j1) else (j2, j1)
+    assert events.index(("end", first)) < events.index(("start", second))
+
+
+def test_sessionless_jobs_still_parallelize(fresh):
+    """Channel mentions carry no session key — they fall back to per-thread."""
+    started, release = [], threading.Event()
+
+    def handler(job):
+        started.append(job["id"])
+        release.wait(5)
+
+    jobs.start(handler, lambda j, e: None, concurrency=2)
+    jobs.submit({"thread": "t1", "session_key": None, "text": "a"})
+    jobs.submit({"thread": "t2", "session_key": None, "text": "b"})
+    assert _wait(lambda: len(started) == 2)
+    release.set()
+
+
 def test_cancel_queued_job(fresh):
     ran, block = [], threading.Event()
 
