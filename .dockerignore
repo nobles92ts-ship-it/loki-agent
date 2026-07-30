@@ -1,0 +1,27 @@
+# Never bake secrets or local state into an image layer.
+.env
+.env.*
+!.env.example
+state/
+work/
+
+# Local tooling and history
+.git/
+.github/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Not needed at runtime
+tests/
+docs/
+*.md
+!README.md
+setup.ps1
+setup.sh
+run_worker.vbs
+tools/
