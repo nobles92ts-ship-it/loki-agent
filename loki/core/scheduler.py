@@ -1,13 +1,15 @@
 """Owner scheduler — recurring/one-shot prompts fired into the job queue.
 
 Owner DM syntax (also `!예약`):
-    !schedule daily HH:MM <prompt>
-    !schedule weekly <mon..sun> HH:MM <prompt>
-    !schedule once YYYY-MM-DD HH:MM <prompt>
+    !schedule daily HH:MM [#channel] <prompt>
+    !schedule weekly <mon..sun> HH:MM [#channel] <prompt>
+    !schedule once YYYY-MM-DD HH:MM [#channel] <prompt>
     !schedule list · !schedule remove <id>
 
-Fires run at the owner's configured permission level and post back to the DM
-where they were created. Times are machine-local. While the worker is down:
+Fires run at the owner's configured permission level. By default the result
+goes back to the conversation the schedule was created in; naming a channel
+posts it there instead (`post_to`) — the owner's own scope, published to a
+room, so the adapter warns when one is set. Times are machine-local. While the worker is down:
 recurring schedules roll forward to their next future slot (no catch-up spam);
 a missed `once` fires immediately on boot.
 """
@@ -40,28 +42,61 @@ _ONCE_RE = re.compile(rf"^once\s+(\d{{4}}-\d{{2}}-\d{{2}})\s+{_TIME_RE}\s+(.+)$"
                       re.IGNORECASE | re.DOTALL)
 
 
+# Optional destination between the time and the prompt. Slack turns a typed
+# `#general` into `<#C0123ABC|general>`, which is unambiguous. A bare id is
+# also accepted but held to a strict shape — length plus a digit — so a prompt
+# opening with a shouty word ("CHECK the logs", "GITHUB is down") is never
+# mistaken for a channel.
+_DEST_LINK_RE = re.compile(r"^<#([A-Z0-9]{4,})(?:\|[^>]*)?>\s*(.*)$", re.DOTALL)
+_DEST_ID_RE = re.compile(r"^([CG][A-Z0-9]{7,})\s+(.+)$", re.DOTALL)
+
+
 # ── parsing ──────────────────────────────────────────────────────────────────
+def split_dest(rest: str) -> tuple[str | None, str]:
+    """Peel an optional leading channel off the prompt → (channel_id, prompt)."""
+    s = (rest or "").strip()
+    m = _DEST_LINK_RE.match(s)
+    if m:
+        return m.group(1), m.group(2).strip()
+    m = _DEST_ID_RE.match(s)
+    if m and any(c.isdigit() for c in m.group(1)):
+        return m.group(1), m.group(2).strip()
+    return None, s
+
+
 def parse(text: str) -> dict | None:
-    """'daily 09:00 do X' → {type, time, dow?, date?, prompt} — or None."""
+    """'daily 09:00 [#chan] do X' → {type, time, dow?, date?, post_to?, prompt}
+    — or None when it doesn't parse."""
     s = (text or "").strip()
+    spec: dict | None = None
     m = _DAILY_RE.match(s)
     if m:
-        return {"type": "daily", "time": f"{int(m.group(1)):02d}:{m.group(2)}",
-                "prompt": m.group(3).strip()}
-    m = _WEEKLY_RE.match(s)
-    if m:
-        dow = _DOW.get(m.group(1).lower())
-        if dow is None:
-            return None
-        return {"type": "weekly", "dow": dow,
-                "time": f"{int(m.group(2)):02d}:{m.group(3)}",
-                "prompt": m.group(4).strip()}
-    m = _ONCE_RE.match(s)
-    if m:
-        return {"type": "once", "date": m.group(1),
-                "time": f"{int(m.group(2)):02d}:{m.group(3)}",
-                "prompt": m.group(4).strip()}
-    return None
+        spec = {"type": "daily", "time": f"{int(m.group(1)):02d}:{m.group(2)}",
+                "prompt": m.group(3)}
+    if spec is None:
+        m = _WEEKLY_RE.match(s)
+        if m:
+            dow = _DOW.get(m.group(1).lower())
+            if dow is None:
+                return None
+            spec = {"type": "weekly", "dow": dow,
+                    "time": f"{int(m.group(2)):02d}:{m.group(3)}",
+                    "prompt": m.group(4)}
+    if spec is None:
+        m = _ONCE_RE.match(s)
+        if m:
+            spec = {"type": "once", "date": m.group(1),
+                    "time": f"{int(m.group(2)):02d}:{m.group(3)}",
+                    "prompt": m.group(4)}
+    if spec is None:
+        return None
+    dest, prompt = split_dest(spec["prompt"])
+    if not prompt:                      # "#channel" with nothing to run
+        return None
+    spec["prompt"] = prompt
+    if dest:
+        spec["post_to"] = dest
+    return spec
 
 
 def compute_next(spec: dict, after: float) -> float:

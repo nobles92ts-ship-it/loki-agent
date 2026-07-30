@@ -250,6 +250,7 @@ def _handle(job: dict) -> None:
         usage.record(job.get("kind", "?"), job.get("user", "?"),
                      res["reason"] == "ok", dur, res["reason"],
                      org=job.get("org"))
+        _budget_alerts(budget.note_usage())
         log.info("job id=%s kind=%s user=%s ev=%s reason=%s dur=%ds chars=%d",
                  job.get("id"), job.get("kind"), job["user"], job["event_id"],
                  res["reason"], int(dur), len(res["text"]))
@@ -259,7 +260,10 @@ def _handle(job: dict) -> None:
             time.sleep(30)
             return
         # Discord renders standard Markdown, so Claude's output goes as-is.
-        _safe_post(job, job.get("reply_prefix", "") + res["text"])
+        body = job.get("reply_prefix", "") + res["text"]
+        if not _safe_post(job, body) and job.get("fallback_channel"):
+            _post(job["fallback_channel"],
+                  t("sched_post_failed", cid=job["channel"]) + body)
         if job.get("user") == OWNER_ID:
             _upload_reply_files(job, res["text"])
     finally:
@@ -319,21 +323,36 @@ def alert_owner(text: str) -> None:
     _call(_alert_owner(text))
 
 
+def _budget_alerts(alerts: list) -> None:
+    """Budget thresholds go to the owner's DM. No buttons — Discord components
+    would need their own routing, and the text commands cover it."""
+    for a in alerts:
+        text = t("budget_alert_full" if a["threshold"] >= 100
+                 else "budget_alert_warn",
+                 label=a["label"], used=a["used"], limit=a["limit"],
+                 pct=a["threshold"])
+        text += "\n" + (t(a["applied"]) if a["applied"] else t("budget_help"))
+        alert_owner(text)
+
+
 def _on_job_error(job: dict, e: Exception) -> None:
     _safe_post(job, t("job_error", e=e))
 
 
-def _safe_post(job: dict, text: str) -> None:
-    _post(job["channel"], text)
+def _safe_post(job: dict, text: str) -> bool:
+    return _post(job["channel"], text)
 
 
-def _post(channel_id: str, text: str) -> None:
+def _post(channel_id: str, text: str) -> bool:
+    """Deliver (chunked). False when the channel is unreachable — a scheduled
+    fire aimed somewhere Loki isn't, most often."""
     channel = _resolve_channel(channel_id)
     if channel is None:
         log.warning("no channel to post to: %s", channel_id)
-        return
+        return False
     for chunk in _chunks(text):
         _call(channel.send(chunk))
+    return True
 
 
 def _chunks(s: str):
@@ -356,8 +375,10 @@ def _fire_schedule(s: dict) -> None:
     A scheduled run is therefore always guarded — it can still do the work,
     it just can't rewrite the permission files.
     """
+    target = s.get("post_to") or s["channel"]
     jobs.submit({
-        "channel": s["channel"], "thread": None, "text": s["prompt"],
+        "channel": target, "thread": None, "text": s["prompt"],
+        "fallback_channel": s["channel"] if target != s["channel"] else None,
         "user": OWNER_ID, "event_id": f"sched-{s['id']}-{int(time.time())}",
         "in_thread": False, "is_mention": False, "is_dm": False,
         "permission_mode": config.PERMISSION_MODE, "kind": "scheduled",
@@ -450,11 +471,31 @@ async def _dispatch(message: discord.Message, is_mention: bool,
                      if i != str(bot.user.id)],
         "is_user_id": lambda tk: bool(_SNOWFLAKE_RE.fullmatch(tk)),
         "is_channel_id": lambda tk: bool(_SNOWFLAKE_RE.fullmatch(tk)),
+        "chan_ref": lambda cid: f"<#{cid}>",
     })
     if reply is not None:
         for chunk in _chunks(reply):
             await channel.send(chunk)
         return
+
+    # Command aliases — `!name args` becomes the request and then runs through
+    # the ordinary path, so throttle, queue and guest scope all still apply.
+    kind = "owner" if is_owner else "guest"
+    reply_prefix = ""
+    expanded = alias.resolve(text, is_owner, org, orgs.allows_command)
+    if expanded is not None:
+        text, reply_prefix = expanded
+        if not text:
+            return                  # known alias, this caller wasn't granted it
+        kind = "alias"
+
+    # Guest budget — a hard cap on what other people may spend. Owners are
+    # never capped, same principle as the throttle below.
+    if not is_owner:
+        ok, key, params = budget.check_guest(org)
+        if not ok:
+            await channel.send(t(key, **params))
+            return
 
     # Guest throttle — an org's rate overrides the global GUEST_RATE_PER_HOUR.
     if not is_owner:
@@ -479,7 +520,7 @@ async def _dispatch(message: discord.Message, is_mention: bool,
                  "text": text, "user": user, "event_id": str(message.id),
                  "in_thread": in_thread, "is_mention": is_mention,
                  "is_dm": _is_dm(channel), "permission_mode": permission_mode,
-                 "kind": "owner" if is_owner else "guest",
+                 "kind": kind, "reply_prefix": reply_prefix,
                  "session_key": session_key,
                  "org": org, "image_paths": img_paths, "doc_paths": doc_paths})
 

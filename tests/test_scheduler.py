@@ -92,3 +92,51 @@ def test_add_tick_rollforward_remove(tmp_path, monkeypatch):
 
     assert scheduler.remove("s1") is True
     assert scheduler.remove("s99") is False
+
+
+# ── destination channel ──────────────────────────────────────────────────────
+def test_parse_slack_channel_link():
+    s = scheduler.parse("daily 09:00 <#C0123ABC|general> post the standup")
+    assert s["post_to"] == "C0123ABC" and s["prompt"] == "post the standup"
+
+
+def test_parse_channel_link_without_label():
+    s = scheduler.parse("weekly fri 17:30 <#C0123ABC> weekly report")
+    assert s["post_to"] == "C0123ABC" and s["prompt"] == "weekly report"
+
+
+def test_parse_bare_channel_id():
+    s = scheduler.parse("once 2026-12-24 18:00 C01AB2CD3E wrap up")
+    assert s["post_to"] == "C01AB2CD3E" and s["prompt"] == "wrap up"
+
+
+def test_parse_without_destination_keeps_prompt_intact():
+    s = scheduler.parse("daily 09:00 summarize yesterday")
+    assert "post_to" not in s and s["prompt"] == "summarize yesterday"
+
+
+def test_shouty_prompt_is_not_a_channel():
+    """A prompt opening with an uppercase word must not be eaten as a channel."""
+    for text, prompt in (("daily 09:00 CHECK the build logs", "CHECK the build logs"),
+                         ("daily 09:00 GITHUB status please", "GITHUB status please"),
+                         ("daily 09:00 CI is red again", "CI is red again")):
+        s = scheduler.parse(text)
+        assert "post_to" not in s and s["prompt"] == prompt
+
+
+def test_destination_without_prompt_is_rejected():
+    assert scheduler.parse("daily 09:00 <#C0123ABC|general>") is None
+    assert scheduler.parse("daily 09:00 <#C0123ABC|general>   ") is None
+
+
+def test_destination_survives_persistence(tmp_path, monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHED_FILE", tmp_path / "sched.json")
+    spec = scheduler.parse("daily 09:00 <#C0123ABC|general> standup")
+    item = scheduler.add(spec, "D0OWNER")
+    assert item["post_to"] == "C0123ABC" and item["channel"] == "D0OWNER"
+    assert scheduler.list_all()[0]["post_to"] == "C0123ABC"
+
+
+def test_split_dest_is_idempotent_on_plain_text():
+    assert scheduler.split_dest("just a prompt") == (None, "just a prompt")
+    assert scheduler.split_dest("") == (None, "")
