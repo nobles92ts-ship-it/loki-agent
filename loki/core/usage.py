@@ -56,6 +56,19 @@ def _read_rows() -> list[dict]:
     return rows
 
 
+def count_since(ts: float, org: str | None = None) -> int:
+    """Calls recorded at or after `ts` — the whole install, or one org.
+
+    Backs the budget caps, so it counts rows rather than summarising them.
+    The ledger is pruned at 1 MB, which bounds the scan.
+    """
+    rows = _read_rows()
+    if org is None:
+        return sum(1 for r in rows if r.get("ts", 0) >= ts)
+    return sum(1 for r in rows
+               if r.get("ts", 0) >= ts and r.get("org") == org)
+
+
 def summarize(days: int = 7) -> dict:
     """Aggregate the last N days (plus a since-local-midnight 'today' block)."""
     now = time.time()

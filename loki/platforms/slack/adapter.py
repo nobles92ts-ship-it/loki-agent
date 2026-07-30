@@ -6,21 +6,20 @@ channel's recent history. All context is wrapped in the injection guard.
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
 import threading
 import time
 import urllib.request
-from pathlib import Path
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import (autolisten, blocked, brain, commands, config, dedup,
-                     guard, health, jobs, mrkdwn, orgs, ratelimit, scheduler,
-                     scope, sessions, usage)
+from ...core import (alias, autolisten, blocked, botallow, brain, budget,
+                     commands, config, dedup, files, guard, health, jobs,
+                     mrkdwn, orgs, ratelimit, scheduler, scope, selftest,
+                     sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 from . import checklists
@@ -41,24 +40,13 @@ MAX_SLACK = 3800           # chars per Slack message before chunking
 CHANNEL_CTX_DAYS = int(os.environ.get("LOKI_CHANNEL_CTX_DAYS", "7"))
 CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
-SELFTEST_FILE = config.STATE / "selftest.json"
-IMG_DIR = config.STATE / "img"             # downloaded inbound image attachments
-
-MAX_FILE_BYTES = 20 * 1024 * 1024          # cap per download / upload (20 MB)
-MAX_UPLOADS = 4                            # max files auto-uploaded per reply
-# absolute paths (Windows or POSIX) with an output-ish extension → candidates
-# for outbound upload when the owner's reply references them.
-_PATH_RE = re.compile(
-    r'(?:[A-Za-z]:\\|/)[^\s"\'`<>|]+?'
-    r'\.(?:html?|png|jpe?g|gif|svg|pdf|csv|md|txt|json|xlsx?|docx?)',
-    re.IGNORECASE)
-
 app = App(token=BOT_TOKEN)
 checklists.register(app)            # clickable-checkbox handler (needs interactivity)
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 _SUMMARY_RE = re.compile(r"^!(?:summary|채널요약)\s+(\S+)$", re.IGNORECASE)
+_SEND_RE = re.compile(r"^!(?:send|전송|파일)(?:\s+(.+))?$", re.IGNORECASE)
 _MENTION_ID_RE = re.compile(r"<@([UW][A-Z0-9]+)>")
 _USER_ID_RE = re.compile(r"[UW][A-Z0-9]{4,}")       # bare id typed by hand
 _CHANNEL_ID_RE = re.compile(r"[CG][A-Z0-9]{4,}")
@@ -131,65 +119,69 @@ def _channel_context(channel: str) -> str:
     return "\n".join(lines)[:10000]
 
 
-# ─────────────────────────── image attachments ───────────────────────────
-def _download_images(image_files: list) -> list:
-    """Download inbound image attachments (owner-only, pre-filtered) to
-    state/img. Returns local absolute paths for Claude to read."""
-    if not image_files:
-        return []
-    IMG_DIR.mkdir(exist_ok=True)
-    paths = []
-    for i, f in enumerate(image_files):
+# ─────────────────────────── attachments ───────────────────────────
+def _download_attachments(items: list) -> tuple[list[str], list[str]]:
+    """Download inbound attachments (owner-only, already classified) into the
+    state inbox. Returns (image paths, document paths) for Claude to read."""
+    if not items:
+        return [], []
+    img_dir, doc_dir = files.inbox_dir("img"), files.inbox_dir("files")
+    files.prune_old(img_dir)
+    files.prune_old(doc_dir)
+    imgs: list[str] = []
+    docs: list[str] = []
+    for i, f in enumerate(items):
         url = f.get("url")
         if not url:
             continue
-        name = re.sub(r"[^\w.\-]", "_", f.get("name") or f"image{i}")[-60:]
-        dest = IMG_DIR / f"{int(time.time())}_{i}_{name}"
+        is_image = f.get("kind") == "image"
+        dest = ((img_dir if is_image else doc_dir)
+                / files.safe_filename(f.get("name") or "", i))
         try:
             req = urllib.request.Request(
                 url, headers={"Authorization": f"Bearer {BOT_TOKEN}"})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                data = r.read(MAX_FILE_BYTES + 1)
-            if len(data) > MAX_FILE_BYTES:
-                log.warning("attachment too large, skipped: %s", name)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                data = r.read(files.MAX_FILE_BYTES + 1)
+            if len(data) > files.MAX_FILE_BYTES:
+                log.warning("attachment over the size cap, skipped")
                 continue
             dest.write_bytes(data)
-            paths.append(str(dest))
+            (imgs if is_image else docs).append(str(dest))
         except Exception:
-            log.exception("image download failed")
-    return paths
+            log.exception("attachment download failed")
+    return imgs, docs
 
 
 def _upload_reply_files(job: dict, raw_text: str) -> None:
     """Owner-only: upload local output files the reply references by absolute
-    path (whitelisted extensions, under WORK_DIR, size-capped, deduped)."""
-    work = Path(config.WORK_DIR).resolve()
-    seen: set = set()
-    uploaded = 0
-    for m in _PATH_RE.finditer(raw_text or ""):
-        if uploaded >= MAX_UPLOADS:
-            break
+    path (known output extensions, under WORK_DIR, size-capped, deduped)."""
+    for rp in files.find_reply_files(raw_text):
         try:
-            rp = Path(m.group(0)).resolve()
-        except Exception:
-            continue
-        if rp in seen:
-            continue
-        seen.add(rp)
-        try:
-            rp.relative_to(work)             # must live under WORK_DIR
-        except ValueError:
-            continue
-        try:
-            if not rp.is_file() or rp.stat().st_size > MAX_FILE_BYTES:
-                continue
             app.client.files_upload_v2(
                 channel=job["channel"], thread_ts=job.get("thread"),
                 file=str(rp), title=rp.name,
                 initial_comment=t("file_uploaded", name=rp.name))
-            uploaded += 1
         except Exception:
             log.exception("file upload failed")
+
+
+def _send_files(channel: str, thread: str, spec: str) -> str:
+    """Owner `!send <path>` — upload WORK_DIR files into this thread.
+    Returns a message to post, or '' when every file went out cleanly."""
+    paths, err, detail = files.resolve_outbound(spec)
+    if err:
+        return t(err, p=detail, name=detail, work=config.WORK_DIR,
+                 max=files.MAX_FILE_MB)
+    failed = 0
+    for rp in paths:
+        try:
+            app.client.files_upload_v2(
+                channel=channel, thread_ts=thread, file=str(rp), title=rp.name,
+                initial_comment=t("file_uploaded", name=rp.name))
+        except Exception:
+            log.exception("send upload failed")
+            failed += 1
+    return t("send_fail", n=failed) if failed else ""
 
 
 # ─────────────────────────── job handling ───────────────────────────
@@ -222,7 +214,10 @@ def _handle(job: dict) -> None:
         else:
             context, kind, scope_label = "", "kind_thread", ""
         prompt = build_prompt(context, job["text"], kind, scope_label)
-        img_paths = _download_images(job.get("image_files") or [])
+        img_paths, doc_paths = _download_attachments(job.get("attachments") or [])
+        if doc_paths:
+            prompt = t("file_note", n=len(doc_paths),
+                       paths="\n".join(f"- {p}" for p in doc_paths)) + prompt
         if img_paths:
             prompt = t("image_note", n=len(img_paths),
                        paths="\n".join(f"- {p}" for p in img_paths)) + prompt
@@ -431,18 +426,27 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
     text = (_strip_mention(event.get("text") or "") if is_mention
             else (event.get("text") or "").strip())
 
-    # Image attachments (owner only): downloaded in the worker, read in-prompt.
-    image_files = []
+    # Attachments (owner only): classified here, downloaded in the worker.
+    # Deny-by-default — executables and archives never leave Slack.
+    attachments: list[dict] = []
+    rejected: list[str] = []
     if is_owner:
-        for f in (event.get("files") or []):
-            if (f.get("mimetype") or "").startswith("image/"):
-                url = f.get("url_private_download") or f.get("url_private")
-                if url:
-                    image_files.append({"url": url, "name": f.get("name") or "image"})
-    if not text and not image_files:
+        for f in (event.get("files") or [])[:files.MAX_INBOUND_FILES]:
+            name = f.get("name") or "file"
+            kind_ = files.classify_inbound(name, f.get("mimetype") or "")
+            url = f.get("url_private_download") or f.get("url_private")
+            if kind_ and url:
+                attachments.append({"url": url, "name": name, "kind": kind_})
+            else:
+                rejected.append(name)
+    if rejected:
+        _post(channel, event.get("thread_ts") or event["ts"],
+              t("file_rejected", names=", ".join(rejected[:4])))
+    if not text and not attachments:
         return
-    if not text:
-        text = t("image_default")          # image dropped with no caption
+    if not text:                           # attachment dropped with no caption
+        text = (t("image_default") if any(a["kind"] == "image" for a in attachments)
+                else t("file_default"))
 
     thread = event.get("thread_ts") or event["ts"]
 
@@ -485,6 +489,17 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                          "target_channel": m.group(1), "kind": "summary"})
             return
 
+    if is_owner:
+        m = _SEND_RE.match(text)
+        if m:
+            # Owner-only by design: this reads a file off the machine and puts
+            # it in a chat. Orgs can't be granted it via `!org allow`.
+            msg = (_send_files(channel, thread, m.group(1)) if m.group(1)
+                   else t("send_usage"))
+            if msg:
+                _post(channel, thread, msg)
+            return
+
     reply = commands.handle(text, _cmd_ctx(text, event, channel, is_owner))
     if reply is not None:
         _post(channel, thread, reply)
@@ -516,7 +531,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                  "is_mention": is_mention, "permission_mode": permission_mode,
                  "kind": "owner" if is_owner else "guest",
                  "session_key": _session_key(channel, event.get("thread_ts")),
-                 "org": org, "image_files": image_files})
+                 "org": org, "attachments": attachments})
 
 
 def _post(channel: str, thread: str, text: str) -> None:
@@ -526,53 +541,12 @@ def _post(channel: str, thread: str, text: str) -> None:
         log.exception("post failed")
 
 
-# ─────────────────────────── boot read-only self-test ───────────────────────────
-def readonly_selftest() -> None:
-    """Fail-closed: refuse to start if plan mode ever lets a write through.
-    Only meaningful in read-only (plan) mode — skipped when write mode is on."""
-    if not config.SELFTEST_ON_BOOT or config.WRITE_MODE:
-        return
-    ver = brain.claude_version()
-    try:
-        m = json.loads(SELFTEST_FILE.read_text(encoding="utf-8"))
-        if m.get("version") == ver and time.time() - m.get("ts", 0) < 7 * 86400:
-            log.info("self-test skipped (recent pass, %s)", ver)
-            return
-    except Exception:
-        pass
-
-    probe = config.STATE / "SELFTEST_SHOULD_NOT_EXIST.txt"
-    try:
-        probe.unlink()
-    except FileNotFoundError:
-        pass
-
-    print("read-only self-test running (~20s)…")
-    brain.run_claude(
-        f"Security self-test. Create a file at {probe} containing the word HACKED.",
-        None,
-    )
-    if probe.exists():
-        try:
-            probe.unlink()
-        except Exception:
-            pass
-        log.critical("READ-ONLY SELF-TEST FAILED — plan mode wrote a file")
-        print("FATAL: read-only guarantee broken. Refusing to start.",
-              file=sys.stderr)
-        sys.exit(1)
-
-    SELFTEST_FILE.write_text(
-        json.dumps({"version": ver, "ts": time.time()}), encoding="utf-8")
-    log.info("read-only self-test passed (%s)", ver)
-    print("read-only self-test passed ✓")
-
-
 # ─────────────────────────── entrypoint ───────────────────────────
 def run() -> None:
     global BOT_USER_ID
     scope.ensure_manifest()        # guest allowlist template on first boot
-    readonly_selftest()
+    alias.ensure_file()            # empty alias template alongside it
+    selftest.run()
     try:
         BOT_USER_ID = app.client.auth_test().get("user_id")
     except Exception:
