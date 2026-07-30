@@ -43,10 +43,12 @@ CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 app = App(token=BOT_TOKEN)
 checklists.register(app)            # clickable-checkbox handler (needs interactivity)
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
+BOT_ID: str | None = None           # our own B… id — never allowed to trigger us
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>")
 _SUMMARY_RE = re.compile(r"^!(?:summary|채널요약)\s+(\S+)$", re.IGNORECASE)
 _SEND_RE = re.compile(r"^!(?:send|전송|파일)(?:\s+(.+))?$", re.IGNORECASE)
+_BOT_RE = re.compile(r"^!(?:bot|봇)\b\s*(.*)$", re.IGNORECASE)
 _MENTION_ID_RE = re.compile(r"<@([UW][A-Z0-9]+)>")
 _USER_ID_RE = re.compile(r"[UW][A-Z0-9]{4,}")       # bare id typed by hand
 _CHANNEL_ID_RE = re.compile(r"[CG][A-Z0-9]{4,}")
@@ -272,6 +274,34 @@ for _action_id in ("budget_sonnet", "budget_pause", "budget_ignore"):
     app.action(_action_id)(_on_budget_action)
 
 
+def _bot_cmd(arg: str) -> str:
+    """Owner `!bot …` — which other apps may trigger Loki in a listen zone."""
+    parts = (arg or "").strip().split()
+    sub = parts[0].lower() if parts else ""
+    if sub in ("list", "목록"):
+        ids = botallow.allowed()
+        return ("\n".join([t("bot_list_header", n=len(ids))]
+                          + [f"• `{b}`" for b in ids]) if ids
+                else t("bot_list_empty"))
+    if sub in ("seen", "관측", "최근"):
+        items = botallow.seen()
+        if not items:
+            return t("bot_seen_empty")
+        return "\n".join([t("bot_seen_header")] + [
+            t("bot_seen_line", id=s["id"], name=s["name"],
+              mark="✅" if s["allowed"] else "◻️") for s in items])
+    if sub in ("allow", "허용", "deny", "차단") and len(parts) > 1:
+        bot_id = parts[1].strip("`").upper()
+        if bot_id in {i for i in (BOT_USER_ID, BOT_ID) if i}:
+            return t("bot_self")           # refuse before it ever reaches state
+        if sub in ("allow", "허용"):
+            return (t("bot_allowed", id=bot_id) if botallow.allow(bot_id)
+                    else t("bot_nochange", id=bot_id))
+        return (t("bot_denied", id=bot_id) if botallow.deny(bot_id)
+                else t("bot_nochange", id=bot_id))
+    return t("bot_help")
+
+
 # ─────────────────────────── job handling ───────────────────────────
 def _handle(job: dict) -> None:
     thread = job.get("thread")     # None for scheduled fires → top-level DM post
@@ -465,14 +495,24 @@ def on_message(body, event, logger):
         return
     # Channel/group message: engage only inside a registered auto-listen zone,
     # and never for @mentions (those arrive via app_mention → no double-handling).
-    if event.get("bot_id"):
-        return
     if BOT_USER_ID and f"<@{BOT_USER_ID}>" in (event.get("text") or ""):
         return
     channel = event.get("channel")
     if blocked.is_blocked(channel):
         return
-    if autolisten.is_zone(channel, event.get("thread_ts")):
+    in_zone = autolisten.is_zone(channel, event.get("thread_ts"))
+    if event.get("bot_id"):
+        # Bots are ignored unless the owner allowlisted them AND this is a zone
+        # — two explicit opt-ins. Loki's own ids are refused inside is_allowed
+        # regardless of the list, which is what makes a bot loop impossible.
+        if not in_zone:
+            return
+        botallow.observe(event)               # so `!bot seen` can offer its id
+        if botallow.is_allowed(event, {BOT_USER_ID, BOT_ID}):
+            _dispatch(body, event, is_mention=False, auto_listen=True,
+                      from_bot=True)
+        return
+    if in_zone:
         _dispatch(body, event, is_mention=False, auto_listen=True)
 
 
@@ -500,13 +540,19 @@ def on_member_joined(body, event, logger):
         log.exception("join-notify DM failed")
 
 
-def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
+def _dispatch(body, event, is_mention: bool, auto_listen: bool = False,
+              from_bot: bool = False) -> None:
     # Stay FAST (filter + enqueue) so Bolt acks within Slack's 3s window.
     subtype = event.get("subtype")
-    if (subtype and subtype != "file_share") or event.get("bot_id"):
+    if from_bot:
+        if subtype and subtype not in ("bot_message", "file_share"):
+            return
+    elif (subtype and subtype != "file_share") or event.get("bot_id"):
         return
-    user = event.get("user")
-    is_owner = user == ALLOWED_USER
+    # A bot has no member id; its own bot id is the identity we throttle and
+    # log under. `is_owner` can never be true for one.
+    user = event.get("user") or (event.get("bot_id") if from_bot else None)
+    is_owner = user == ALLOWED_USER and not from_bot
     channel = event.get("channel")
     if not is_owner:
         # Non-owner: only via @mention OR inside an auto-listen zone (never a
@@ -524,8 +570,12 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
     if dedup.already_seen(event_id):
         return
 
-    text = (_strip_mention(event.get("text") or "") if is_mention
-            else (event.get("text") or "").strip())
+    if from_bot:
+        # Many bots leave `text` empty and put everything in attachments.
+        text = botallow.message_text(event)
+    else:
+        text = (_strip_mention(event.get("text") or "") if is_mention
+                else (event.get("text") or "").strip())
 
     # Attachments (owner only): classified here, downloaded in the worker.
     # Deny-by-default — executables and archives never leave Slack.
@@ -590,6 +640,8 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                          "target_channel": m.group(1), "kind": "summary"})
             return
 
+    # Commands are for people. A bot is an event source, not an operator,
+    # so its message skips the command layer and reaches the brain as text.
     if is_owner:
         m = _SEND_RE.match(text)
         if m:
@@ -600,17 +652,23 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
             if msg:
                 _post(channel, thread, msg)
             return
+        m = _BOT_RE.match(text)
+        if m:
+            _post(channel, thread, _bot_cmd(m.group(1)))
+            return
 
-    reply = commands.handle(text, _cmd_ctx(text, event, channel, is_owner))
+    reply = (None if from_bot
+             else commands.handle(text, _cmd_ctx(text, event, channel, is_owner)))
     if reply is not None:
         _post(channel, thread, reply)
         return
 
     # Command aliases — `!name args` becomes the request and then runs through
     # the ordinary path, so throttle, queue and guest scope all still apply.
-    kind = "owner" if is_owner else "guest"
+    kind = "owner" if is_owner else ("bot" if from_bot else "guest")
     reply_prefix = ""
-    expanded = alias.resolve(text, is_owner, org, orgs.allows_command)
+    expanded = (None if from_bot
+                else alias.resolve(text, is_owner, org, orgs.allows_command))
     if expanded is not None:
         text, reply_prefix = expanded
         if not text:
@@ -663,12 +721,13 @@ def _post(channel: str, thread: str, text: str) -> None:
 
 # ─────────────────────────── entrypoint ───────────────────────────
 def run() -> None:
-    global BOT_USER_ID
+    global BOT_USER_ID, BOT_ID
     scope.ensure_manifest()        # guest allowlist template on first boot
     alias.ensure_file()            # empty alias template alongside it
     selftest.run()
     try:
-        BOT_USER_ID = app.client.auth_test().get("user_id")
+        me = app.client.auth_test()
+        BOT_USER_ID, BOT_ID = me.get("user_id"), me.get("bot_id")
     except Exception:
         log.exception("auth.test failed")
         print("[loki] Slack auth failed — check SLACK_BOT_TOKEN.", file=sys.stderr)
