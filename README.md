@@ -65,6 +65,10 @@ cd loki-agent
 Autostart: `.\setup.ps1 -Autostart` (Windows login launcher) · systemd/launchd examples in [docs/SETUP.md](docs/SETUP.md).
 Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 
+**Prefer Telegram?** Two values in `.env` — a token from @BotFather and your numeric id — and it's the same Loki with the same commands. → [docs/TELEGRAM.md](docs/TELEGRAM.md)
+
+**Or run it on something that stays on.** A laptop that closes at 6pm is a bot that stops answering at 6pm and misses every schedule. `Dockerfile` + `docker-compose.yml` put Loki on a NAS or home server — and the container is a tighter fence than a desktop account, since Claude can only reach the folders you mounted. → [docs/DOCKER.md](docs/DOCKER.md)
+
 ## Configuration (`.env`)
 
 | Key | Default | Meaning |
@@ -132,6 +136,7 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!usage [days]` | anywhere | usage report: calls, ok/fail, total time, by user/kind (default 7 days) |
 | `!schedule …` | DM | recurring/one-shot prompts — see below |
 | `!learn <note>` | DM | append a note to your learnings inbox (`state/learnings.md`) |
+| `!send <path>` | anywhere | upload a file into this conversation — path relative to `WORK_DIR`, an absolute path inside it, or a glob (`reports/*.pdf`). Owner only, never grantable to an org |
 | `!new` | anywhere | forget this conversation and start a fresh Claude session |
 | `!block <channel_id>` | DM | silence Loki for guests in that channel (persisted) |
 | `!unblock <channel_id>` | DM | reopen it |
@@ -141,6 +146,9 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!listening` | anywhere | list active auto-listen zones |
 | `!org …` | anywhere | manage [organizations](#organizations--per-company-scope-commands-and-rate): `create` `list` `info` `add` `remove` `bind` `unbind` `allow` `deny` |
 | `!plugins` | anywhere | list your own installed commands — see [docs/PLUGINS.md](docs/PLUGINS.md) |
+| `!alias …` | anywhere | manage [prompt aliases](#aliases--your-own-commands-without-code): `list` `add <name> <prompt>` `remove <name>` |
+| `!budget …` | DM | [usage budgets](#budgets--caps-that-protect-your-subscription): caps, mode, and mitigations |
+| `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
 Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크`.
@@ -158,6 +166,59 @@ Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` 
 
 > Requires the `message.channels` + `message.groups` bot events (no new OAuth scopes). Apps created from this repo's manifest already have them; if you installed before v1.5.0, add the two events under **Event Subscriptions → Subscribe to bot events** in your app config — no reinstall prompt.
 
+### Aliases — your own commands, without code
+
+A prompt you keep retyping becomes a command. **One markdown file** (`<WORK_DIR>/loki/aliases.md`) holds them all — human-editable, applied on the next request:
+
+```markdown
+## Aliases
+- standup: Summarize yesterday's commits in WORK_DIR, grouped by project
+- review: Review {args} and list the risky changes
+```
+
+```
+!alias add standup Summarize yesterday's commits    # or just edit the file
+!standup                                            # runs the stored prompt
+!review PR 412                                      # {args} → "PR 412"
+```
+
+`{args}` marks where your arguments go; without it they're appended. An alias is a *prompt*, not a new permission — it runs exactly like typing that text yourself, so the queue, throttle and guest scope all still apply, and a built-in command can never be shadowed. Owners can run any alias; guests only the ones their org was granted (`!org allow acme standup`). For pipelines that need real code rather than a prompt, the private-command hook is still the answer — see [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+**Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there — or **into a channel**, which turns a schedule into a team report. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
+
+```
+!schedule daily 09:00 summarize yesterday's git log in WORK_DIR
+!schedule daily 09:00 #standup post yesterday's commits, grouped by project
+!schedule weekly fri 17:30 draft my weekly report from this week's notes
+!schedule once 2026-12-24 18:00 remind me to wrap up early
+!schedule list · !schedule remove s1
+```
+
+Naming a channel publishes that run to everyone in it, and a scheduled fire uses *your* full scope — not the guest fence — so Loki says so when you create one. If it can't post there (not invited yet), the result comes back to your DM instead of vanishing.
+
+**Auto-listen zones** — tired of @mentioning Loki in your working thread? Say `@Loki !listen` once in a thread (or at channel top level for the whole channel) and everyone there talks to Loki mention-free, like a group DM. Permissions don't change: guests stay read-only + rate-limited, `!block` overrides a zone, mentions aren't double-answered, and bot messages are ignored (no loops). Heads-up: in a zone **every** human message becomes a Claude call — prefer work threads over busy channels.
+
+> Requires the `message.channels` + `message.groups` bot events (no new OAuth scopes). Apps created from this repo's manifest already have them; if you installed before v1.5.0, add the two events under **Event Subscriptions → Subscribe to bot events** in your app config — no reinstall prompt.
+
+### Bot triggers — let an alert wake Loki
+
+Loki ignores every bot message by default; that's what makes bot-to-bot loops impossible. Allowlist a specific bot and it can wake Loki **inside an auto-listen zone**, which turns a notification into an investigation:
+
+```
+!listen                     # in the channel where your CI posts
+!bot seen                   # → ◻️ B01ABC2DEF — CircleCI
+!bot allow B01ABC2DEF
+```
+
+Now a failed build lands and Loki reads it. Two opt-ins are required — the zone *and* the allowlist — and the guarantees around it are deliberately tight:
+
+- The bot arrives as a **guest**: read-only, confined to the `loki.md` (or its org's) allowlist, rate-limited under its own bot id, and counted against your budget.
+- Its message is **text, never a command** — a bot can't fire an alias, toggle a checklist, or reach `!send`. Commands are for people.
+- **Loki can never trigger itself.** Its own ids are refused before the allowlist is even read, so no edit to state can start a loop.
+- `!block` still wins, and bots outside a zone stay ignored.
+
+Bot output is untrusted text — a CI job prints whatever a branch name says — so it goes through the same injection guard as any other context, under the guest fence.
+
 ### Checklists
 
 `!check` posts a shared, clickable checklist — a title line ending in `:`, then one item per line (or a comma-separated list):
@@ -172,6 +233,25 @@ bread
 Each item is a ☐/☑ button. Tap it to toggle, and the state **syncs for everyone** viewing the message — button labels re-render on update, unlike Slack's native checkboxes whose checked state is per-viewer input. You can also toggle by talking in the checklist's thread: `done 2`, `done 2 3`, `undo 2`, `done all`. The owner creates a checklist; anyone who can see it may toggle. State persists in `state/checklists/`.
 
 > Clickable toggles need **Interactivity** enabled (app config → **Interactivity & Shortcuts** → toggle on; no Request URL needed with Socket Mode). Apps created from this repo's manifest already have it; older installs flip it on once. Creating a checklist and `done N` work without it — only the buttons need it.
+
+### Budgets — caps that protect your subscription
+
+`GUEST_RATE_PER_HOUR` stops one person spamming you; a **budget** stops everyone together quietly draining a month. Set a daily or weekly total (and per-org totals) and Loki refuses *guests* once it's reached — **you are never capped**, same rule as the throttle.
+
+```
+!budget                     # where things stand
+!budget daily 60            # 60 calls a day, everyone together (0 = off)
+!budget weekly 300          # rolling seven days
+!budget org acme 20         # that company's own daily share
+!budget mode auto           # default is manual — see below
+```
+
+As a cap gets close (80%, then 100%) Loki DMs you. What happens next is the part you choose:
+
+- **`manual` (default)** — Loki asks and waits. The alert carries one-tap buttons: *switch to sonnet*, *pause guests*, *ignore today*. Nothing about your setup changes until you tap one (`!budget sonnet` / `pause` / `resume` / `default` work too, if you never enabled Interactivity).
+- **`auto`** — Loki pins the lighter model itself the moment a threshold is crossed, then tells you it did.
+
+Either way the cap still bites at 100%: guests are refused until the window rolls over. An org's cap binds that org alone — one company running dry never locks out another.
 
 ### The guest allowlist (`loki.md`)
 
@@ -274,7 +354,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.6.3 | ✅ **Discord adapter** · rolling conversation memory + `!new` · shared command router · permission-file tamper guard |
 | v1.6.4 | ✅ **supervision** (`status` · `doctor` · `gateway`, heartbeat, restart-on-crash) · **plugins** (`plugins/`, one file per command) |
 | next | per-user sessions in shared channels · token-level usage — see [docs/ROADMAP.md](docs/ROADMAP.md) |
-| v2.0 | **Telegram** adapter |
+| v1.7 | ✅ document attachments + `!send` · prompt aliases (`!alias`) · schedules to a channel · usage budgets (`!budget`) · bot triggers (`!bot`) · **Telegram adapter** · Docker/NAS |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

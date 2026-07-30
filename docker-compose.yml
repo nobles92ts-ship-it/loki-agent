@@ -1,0 +1,47 @@
+# Loki on a machine that stays on. See docs/DOCKER.md for the one-time
+# Claude login, which has to happen before the first `up`.
+#
+#   docker compose run --rm --entrypoint claude loki   # log in once
+#   docker compose up -d                               # then run it
+
+services:
+  loki:
+    build:
+      context: .
+      # Pin the CLI for a reproducible image:
+      # args: { CLAUDE_VERSION: "1.2.3" }
+    image: loki-agent
+    container_name: loki
+    restart: unless-stopped
+    init: true                    # so `docker stop` reaps claude's children
+
+    # Slack tokens, ALLOWED_USER_ID and the rest — never baked into the image.
+    env_file: .env
+
+    # Which platform this container serves. One process per platform — run a
+    # second container (its own state volume) to serve two.
+    # command: ["python", "-m", "loki", "telegram"]
+
+    environment:
+      # Loki works inside the container, so WORK_DIR is the path *in here*
+      # that ./work is mounted to — not the host path.
+      WORK_DIR: /work
+      # The scheduler runs on machine-local time and a container is UTC by
+      # default, which would fire `!schedule daily 09:00` at the wrong hour.
+      TZ: ${TZ:-UTC}
+
+    volumes:
+      # What Claude may read and write. Point the left side at the folder you
+      # actually want reachable — not your whole home directory.
+      - ./work:/work
+      # Sessions, schedules, checklists, budgets, log. Persist or lose them.
+      - ./state:/app/state
+      # The Claude login. Populated by the one-time login step above.
+      - claude-config:/claude-config
+
+    # Hardening: run as a non-root uid that owns the mounts above.
+    # On Synology, use the uid/gid of the share's owner.
+    # user: "1000:1000"
+
+volumes:
+  claude-config:
