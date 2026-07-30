@@ -36,11 +36,17 @@ MAX_TEMPLATE = 4000                     # a template is a prompt, not a document
 RESERVED = {
     "stop", "cancel", "jobs", "usage", "schedule", "learn", "send", "block",
     "unblock", "summary", "listen", "unlisten", "listening", "org", "check",
-    "todo", "alias", "budget", "bot", "help", "model", "health",
+    "todo", "alias", "budget", "bot", "help", "model", "health", "new",
+    "plugins", "status", "doctor", "gateway", "reset",
     "중지", "취소", "작업목록", "사용량", "예약", "학습", "전송", "파일",
     "차단", "차단해제", "채널요약", "청취", "청취해제", "청취목록", "조직",
-    "체크", "별칭", "예산", "봇", "도움말",
+    "체크", "별칭", "예산", "봇", "도움말", "새대화", "리셋", "플러그인",
 }
+
+# `!name [args]` — an alias call. Built-in commands and plugins are matched
+# before this, and an unknown name falls through to the brain as ordinary text.
+CALL_RE = re.compile(r"^!([A-Za-z0-9가-힣_-]{1,32})(?:\s+(.*))?$",
+                     re.IGNORECASE | re.DOTALL)
 
 _HEAD_RE = re.compile(r"^##\s+(.+?)\s*$")
 _ITEM_RE = re.compile(r"^-\s+`?([^\s:`]{1,32})`?\s*:\s*(.*)$")
@@ -153,6 +159,28 @@ def expand(template: str, args: str = "") -> str:
     if "{args}" in template:
         return template.replace("{args}", args).strip()
     return f"{template} {args}".strip() if args else template
+
+
+def resolve(text: str, is_owner: bool, org: str | None,
+            allows) -> tuple[str, str] | None:
+    """`!name args` → (expanded prompt, reply prefix), or None if not an alias.
+
+    Unlike a command this returns no reply — the expansion becomes the request
+    and runs through the ordinary path, so the queue, throttle and guest scope
+    all still apply. An ungranted guest gets None *and* silence: confirming
+    that an alias exists would leak the owner's command surface.
+    """
+    m = CALL_RE.match((text or "").strip())
+    if not m:
+        return None
+    name = m.group(1).lower()
+    template = get(name)
+    if template is None:
+        return None
+    if not (is_owner or allows(org, name)):
+        return "", ""                       # known alias, not granted → drop
+    from .config import t                    # local: avoids an import cycle
+    return expand(template, m.group(2) or ""), t("alias_fired", name=name)
 
 
 # ── owner CRUD (the file stays the single source of truth) ──────────────────

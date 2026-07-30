@@ -64,6 +64,20 @@ def _session_key(channel: str, thread_ts: str | None) -> str | None:
                             is_dm=str(channel or "").startswith("D"))
 
 
+_owner_dm_id: str | None = None
+
+
+def _owner_dm() -> str | None:
+    """The owner's DM channel id, resolved once and cached."""
+    global _owner_dm_id
+    if _owner_dm_id is None:
+        try:
+            _owner_dm_id = app.client.conversations_open(
+                users=ALLOWED_USER)["channel"]["id"]
+        except Exception:
+            log.exception("conversations_open failed")
+    return _owner_dm_id
+
 def _user_name(uid: str | None) -> str | None:
     if not uid:
         return None
@@ -184,6 +198,80 @@ def _send_files(channel: str, thread: str, spec: str) -> str:
     return t("send_fail", n=failed) if failed else ""
 
 
+
+def _budget_blocks(text: str, full: bool) -> list[dict]:
+    """Alert message with one-tap mitigations (needs Interactivity)."""
+    buttons = [{"type": "button", "action_id": "budget_sonnet",
+                "text": {"type": "plain_text", "text": t("budget_btn_sonnet")},
+                "value": "sonnet"}]
+    if not full:            # pausing early only makes sense before the cap bites
+        buttons.append({"type": "button", "action_id": "budget_pause",
+                        "text": {"type": "plain_text",
+                                 "text": t("budget_btn_pause")},
+                        "value": "pause"})
+    buttons.append({"type": "button", "action_id": "budget_ignore",
+                    "text": {"type": "plain_text", "text": t("budget_btn_ignore")},
+                    "value": "ignore"})
+    return [{"type": "section", "text": {"type": "mrkdwn", "text": text}},
+            {"type": "actions", "elements": buttons}]
+
+
+def _budget_alerts(alerts: list[dict]) -> None:
+    """Deliver threshold alerts to the owner's DM."""
+    dm = _owner_dm()
+    if not dm:
+        return
+    for a in alerts:
+        full = a["threshold"] >= 100
+        text = t("budget_alert_full" if full else "budget_alert_warn",
+                 label=a["label"], used=a["used"], limit=a["limit"],
+                 pct=a["threshold"])
+        if a["applied"]:                       # auto mode already acted
+            text += "\n" + t(a["applied"])
+        try:
+            app.client.chat_postMessage(channel=dm, text=text,
+                                        blocks=_budget_blocks(text, full))
+        except Exception:
+            log.exception("budget alert failed")
+
+def _on_budget_action(ack, body, client, logger=None) -> None:
+    """Owner tapped a mitigation button. Owner-only, even in a DM."""
+    ack()
+    try:
+        if (body.get("user") or {}).get("id") != ALLOWED_USER:
+            return
+        action = (body.get("actions") or [{}])[0].get("value") or ""
+        result = t(budget.apply(action))
+        channel = (body.get("channel") or {}).get("id")
+        ts = (body.get("message") or {}).get("ts")
+        if channel and ts:                     # retire the buttons
+            client.chat_update(channel=channel, ts=ts, text=result, blocks=[])
+    except Exception:
+        log.exception("budget action failed")
+
+for _action_id in ("budget_sonnet", "budget_pause", "budget_ignore"):
+    app.action(_action_id)(_on_budget_action)
+
+def _on_budget_action(ack, body, client, logger=None) -> None:
+    """Owner tapped a mitigation button. Owner-only, even in a DM."""
+    ack()
+    try:
+        if (body.get("user") or {}).get("id") != ALLOWED_USER:
+            return
+        action = (body.get("actions") or [{}])[0].get("value") or ""
+        result = t(budget.apply(action))
+        channel = (body.get("channel") or {}).get("id")
+        ts = (body.get("message") or {}).get("ts")
+        if channel and ts:                     # retire the buttons
+            client.chat_update(channel=channel, ts=ts, text=result, blocks=[])
+    except Exception:
+        log.exception("budget action failed")
+
+
+for _action_id in ("budget_sonnet", "budget_pause", "budget_ignore"):
+    app.action(_action_id)(_on_budget_action)
+
+
 # ─────────────────────────── job handling ───────────────────────────
 def _handle(job: dict) -> None:
     thread = job.get("thread")     # None for scheduled fires → top-level DM post
@@ -267,6 +355,7 @@ def _handle(job: dict) -> None:
         usage.record(job.get("kind", "?"), job.get("user", "?"),
                      res["reason"] == "ok", dur, res["reason"],
                      org=job.get("org"))
+        _budget_alerts(budget.note_usage())
         log.info("job id=%s kind=%s user=%s ev=%s reason=%s dur=%ds chars=%d",
                  job.get("id"), job.get("kind"), job["user"], job["event_id"],
                  res["reason"], int(dur), len(res["text"]))
@@ -276,7 +365,10 @@ def _handle(job: dict) -> None:
             time.sleep(30)
             return
         # Convert Claude's Markdown to Slack mrkdwn so it renders cleanly.
-        _safe_post(job, job.get("reply_prefix", "") + mrkdwn.to_mrkdwn(res["text"]))
+        body = job.get("reply_prefix", "") + mrkdwn.to_mrkdwn(res["text"])
+        if not _safe_post(job, body) and job.get("fallback_channel"):
+            _safe_post(dict(job, channel=job["fallback_channel"], thread=None),
+                       t("sched_post_failed", cid=job["channel"]) + body)
         # Owner only: attach any local output files the reply references.
         if job.get("user") == ALLOWED_USER:
             _upload_reply_files(job, res["text"])
@@ -303,13 +395,17 @@ def _on_job_error(job: dict, e: Exception) -> None:
     _safe_post(job, t("job_error", e=e))
 
 
-def _safe_post(job: dict, text: str) -> None:
+def _safe_post(job: dict, text: str) -> bool:
+    """Post (chunked) to the job's conversation. False when Slack refused — a
+    scheduled fire aimed at a channel Loki isn't in, most often."""
     kw = {"thread_ts": job["thread"]} if job.get("thread") else {}
     try:
         for chunk in _chunks(text):
             app.client.chat_postMessage(channel=job["channel"], text=chunk, **kw)
+        return True
     except Exception:
         log.exception("post failed")
+        return False
 
 
 def _chunks(s: str):
@@ -341,13 +437,18 @@ def _cmd_ctx(text: str, event: dict, channel: str, is_owner: bool) -> dict:
         "user_ids": [i for i in _MENTION_ID_RE.findall(raw) if i != BOT_USER_ID],
         "is_user_id": lambda tk: bool(_USER_ID_RE.fullmatch(tk)),
         "is_channel_id": lambda tk: bool(_CHANNEL_ID_RE.fullmatch(tk)),
+        "chan_ref": lambda cid: f"<#{cid}>",
     }
 
 
 def _fire_schedule(s: dict) -> None:
-    """Scheduler callback — runs at owner permission, posts to the origin DM."""
+    """Scheduler callback — runs at owner permission. Posts to the schedule's
+    target channel when one was named, otherwise back where it was created; a
+    failed channel post falls back there rather than losing the run."""
+    target = s.get("post_to") or s["channel"]
     jobs.submit({
-        "channel": s["channel"], "thread": None,
+        "channel": target, "thread": None,
+        "fallback_channel": s["channel"] if target != s["channel"] else None,
         "text": s["prompt"], "user": ALLOWED_USER,
         "event_id": f"sched-{s['id']}-{int(time.time())}",
         "in_thread": False, "is_mention": False,
@@ -505,6 +606,25 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
         _post(channel, thread, reply)
         return
 
+    # Command aliases — `!name args` becomes the request and then runs through
+    # the ordinary path, so throttle, queue and guest scope all still apply.
+    kind = "owner" if is_owner else "guest"
+    reply_prefix = ""
+    expanded = alias.resolve(text, is_owner, org, orgs.allows_command)
+    if expanded is not None:
+        text, reply_prefix = expanded
+        if not text:
+            return                  # known alias, this caller wasn't granted it
+        kind = "alias"
+
+    # Guest budget — a hard daily/weekly cap on what other people may spend.
+    # Owners are never capped, same principle as the throttle below.
+    if not is_owner:
+        ok, key, params = budget.check_guest(org)
+        if not ok:
+            _post(channel, thread, t(key, **params))
+            return
+
     # Guest throttle — protect the owner's subscription (owners never limited).
     # An org's Settings.rate overrides the global GUEST_RATE_PER_HOUR.
     if not is_owner:
@@ -529,7 +649,7 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False) -> None:
                  "user": user, "event_id": event_id,
                  "in_thread": bool(event.get("thread_ts")),
                  "is_mention": is_mention, "permission_mode": permission_mode,
-                 "kind": "owner" if is_owner else "guest",
+                 "kind": kind, "reply_prefix": reply_prefix,
                  "session_key": _session_key(channel, event.get("thread_ts")),
                  "org": org, "attachments": attachments})
 

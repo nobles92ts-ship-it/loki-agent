@@ -18,8 +18,8 @@ import re
 import time
 from typing import Callable
 
-from . import (autolisten, blocked, config, jobs, learn, orgs, plugins,
-               scheduler, sessions, usage)
+from . import (alias, autolisten, blocked, budget, config, jobs, learn, orgs,
+               plugins, scheduler, sessions, usage)
 from .config import t
 
 # Command surface. Korean aliases sit alongside the English ones so a Korean
@@ -36,6 +36,10 @@ LISTEN_RE = re.compile(r"^!(?:listen|청취)$", re.IGNORECASE)
 UNLISTEN_RE = re.compile(r"^!(?:unlisten|청취해제)$", re.IGNORECASE)
 LISTENING_RE = re.compile(r"^!(?:listening|청취목록)$", re.IGNORECASE)
 PLUGINS_RE = re.compile(r"^!(?:plugins|플러그인)$", re.IGNORECASE)
+ALIAS_RE = re.compile(r"^!(?:alias|별칭)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
+_ALIAS_SUB_RE = re.compile(r"^(list|add|remove|delete|목록|추가|삭제|제거)\b\s*(.*)$",
+                           re.IGNORECASE | re.DOTALL)
+BUDGET_RE = re.compile(r"^!(?:budget|예산)\b\s*(.*)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
     r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
@@ -110,7 +114,8 @@ def _builtin(text: str, ctx: dict) -> str | None:
         return t(key, id=jid)
     m = SCHED_RE.match(text)
     if m:
-        return schedule_cmd(ctx["channel"], m.group(1))
+        return schedule_cmd(ctx["channel"], m.group(1),
+                            ctx.get("chan_ref") or (lambda c: c))
     m = LEARN_RE.match(text)
     if m:
         return t("learn_saved", n=learn.capture(m.group(1)))
@@ -125,6 +130,12 @@ def _builtin(text: str, ctx: dict) -> str | None:
         return fmt_listening()
     if PLUGINS_RE.match(text):
         return _fmt_plugins()
+    m = ALIAS_RE.match(text)
+    if m:
+        return alias_cmd(m.group(1))
+    m = BUDGET_RE.match(text)
+    if m:
+        return budget_cmd(m.group(1))
     m = ORG_RE.match(text)
     if m:
         return org_cmd(m.group(1), ctx)
@@ -192,7 +203,7 @@ def fmt_listening() -> str:
 
 
 # ─────────────────────────── schedules ───────────────────────────
-def schedule_cmd(channel: str, arg: str) -> str:
+def schedule_cmd(channel: str, arg: str, chan_ref=lambda c: c) -> str:
     a = (arg or "").strip()
     if a.lower() in ("list", "목록"):
         items = scheduler.list_all()
@@ -203,7 +214,9 @@ def schedule_cmd(channel: str, arg: str) -> str:
             nxt = time.strftime("%Y-%m-%d %H:%M",
                                 time.localtime(s.get("next_fire", 0)))
             snip = (s.get("prompt") or "").replace("\n", " ")[:60]
-            lines.append(f"• {s['id']} — {scheduler.spec_str(s)} → {nxt} · “{snip}”")
+            where = f" → {chan_ref(s['post_to'])}" if s.get("post_to") else ""
+            lines.append(f"• {s['id']} — {scheduler.spec_str(s)}{where}"
+                         f" → {nxt} · “{snip}”")
         return "\n".join(lines)
     m = re.match(r"^(?:remove|delete|삭제|제거)\s+(s\d+)$", a, re.IGNORECASE)
     if m:
@@ -215,7 +228,92 @@ def schedule_cmd(channel: str, arg: str) -> str:
         return t("sched_help")
     item = scheduler.add(spec, channel)
     nxt = time.strftime("%Y-%m-%d %H:%M", time.localtime(item["next_fire"]))
-    return t("sched_added", id=item["id"], spec=scheduler.spec_str(item), next=nxt)
+    msg = t("sched_added", id=item["id"], spec=scheduler.spec_str(item), next=nxt)
+    if item.get("post_to"):
+        # A scheduled fire runs at the owner's scope; publishing that to a
+        # room is a deliberate choice, so say so as it is made.
+        msg += "\n" + t("sched_added_channel", cid=item["post_to"])
+    return msg
+
+
+# ─────────────────────────── aliases + budget ───────────────────────────
+def alias_cmd(arg: str) -> str:
+    m = _ALIAS_SUB_RE.match((arg or "").strip())
+    if not m:
+        return t("alias_help")
+    sub, rest = m.group(1).lower(), (m.group(2) or "").strip()
+    if sub in ("list", "목록"):
+        items = alias.all_items()
+        if not items:
+            return t("alias_list_empty")
+        lines = [t("alias_list_header", n=len(items))]
+        for name, template in sorted(items.items()):
+            lines.append(t("alias_list_line", name=name,
+                           prompt=template.replace("\n", " ")[:70]))
+        return "\n".join(lines)
+    if sub in ("remove", "delete", "삭제", "제거"):
+        name = rest.split()[0].lstrip("!").lower() if rest else ""
+        return (t("alias_removed", name=name) if name and alias.remove(name)
+                else t("alias_not_found", name=name or "?"))
+    parts = rest.split(None, 1)
+    if len(parts) < 2:
+        return t("alias_help")
+    name = parts[0].lstrip("!")
+    outcome = alias.add(name, parts[1])
+    return t(f"alias_{outcome}", name=name.lower(), path=alias.aliases_file())
+
+
+def budget_cmd(arg: str) -> str:
+    a = (arg or "").strip()
+    if not a:
+        return fmt_budget()
+    parts = a.split()
+    head = parts[0].lower()
+    if head in ("mode", "모드"):
+        mode = parts[1].lower() if len(parts) > 1 else ""
+        if not budget.set_mode(mode):
+            return t("budget_help")
+        return t("budget_mode_set", mode=mode, note=t(f"budget_mode_{mode}"))
+    if head in ("daily", "weekly", "일일", "주간"):
+        period = {"일일": "daily", "주간": "weekly"}.get(head, head)
+        n = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else -1
+        if not budget.set_limit(period, n):
+            return t("budget_help")
+        return (t("budget_limit_set", period=period, n=n) if n
+                else t("budget_limit_off", period=period))
+    if head in ("org", "조직"):
+        if len(parts) < 3 or not parts[2].isdigit():
+            return t("budget_help")
+        org, n = parts[1], int(parts[2])
+        if not budget.set_org_limit(org, n):
+            return t("budget_help")
+        return (t("budget_org_set", org=org, n=n) if n
+                else t("budget_org_off", org=org))
+    if head in ("off", "해제"):
+        budget.clear()
+        return t("budget_cleared")
+    if head in budget.ACTIONS:
+        return t(budget.apply(head))
+    return t("budget_help")
+
+
+def fmt_budget() -> str:
+    s = budget.settings()
+    mode = s.get("mode", "manual")
+    lines = [t("budget_status_header", mode=mode,
+               mode_note=t(f"budget_mode_{mode}"))]
+    scopes = budget.scopes(s)
+    if not scopes:
+        lines.append(t("budget_status_none"))
+    for sc in scopes:
+        lines.append(t("budget_status_line", label=sc["label"], used=sc["used"],
+                       limit=sc["limit"], pct=sc["pct"]))
+    if s.get("model_override"):
+        lines.append(t("budget_status_model", model=s["model_override"]))
+    paused = budget.guests_paused_for()
+    if paused:
+        lines.append(t("budget_status_paused", n=paused))
+    return "\n".join(lines)
 
 
 # ─────────────────────────── orgs ───────────────────────────
