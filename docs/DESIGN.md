@@ -34,6 +34,10 @@ loki/
 | **UTF-8 forced everywhere** | Legacy consoles (cp949 etc.) crash naive `print` on emoji; `pythonw` has no stdout at all. Both handled at import time. |
 | **Metadata-only logging** | Logs are for ops (who/when/how long/result reason), not surveillance. Message bodies never touch disk. |
 | **i18n via one `t()` table** | Bot UX in English or Korean (`LOKI_LANG`) without forking strings across the codebase. |
+| **Markdown files are the config** | `loki.md`, `orgs/*.md` and `aliases.md` are read on change, not loaded at boot. Editing permissions in a text editor and asking Loki to do it are the same action — and a broken file fails closed instead of taking the bot down. |
+| **Caps are hard, mitigations are asked** | A budget refuses guests on its own, because that is what a cap is for. Pinning a lighter model or pausing guests changes how the whole install behaves, so those are manual by default — Loki asks in DM and waits. `mode: auto` is opt-in. |
+| **Bots need two opt-ins** | An allowlisted bot can only trigger Loki inside a zone the owner already opened, arrives as a guest, and never as a command. The self-id loop guard is checked before the allowlist, so it cannot be edited away. |
+| **The self-test lives in core** | It was Slack-only, and Discord shipped without it — the guarantee that plan mode cannot write is exactly the kind that must not be per-adapter. |
 
 ## Known limits (v1)
 

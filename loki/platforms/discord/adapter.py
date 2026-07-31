@@ -19,13 +19,12 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import discord
 
-from ...core import (autolisten, blocked, brain, commands, config, dedup,
-                     guard, health, jobs, orgs, ratelimit, scheduler, scope,
-                     sessions, usage)
+from ...core import (alias, autolisten, blocked, brain, budget, commands,
+                     config, dedup, files, guard, health, jobs, orgs,
+                     ratelimit, scheduler, scope, selftest, sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
 
@@ -37,18 +36,11 @@ MAX_DISCORD = 1900          # chars per message (hard limit 2000, leave headroom
 CHANNEL_CTX_DAYS = int(os.environ.get("LOKI_CHANNEL_CTX_DAYS", "7"))
 CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
-IMG_DIR = config.STATE / "img"
-MAX_FILE_BYTES = 20 * 1024 * 1024
-MAX_UPLOADS = 4
-_PATH_RE = re.compile(
-    r'(?:[A-Za-z]:\\|/)[^\s"\'`<>|]+?'
-    r'\.(?:html?|png|jpe?g|gif|svg|pdf|csv|md|txt|json|xlsx?|docx?)',
-    re.IGNORECASE)
-
 _MENTION_RE = re.compile(r"<@[!&]?\d+>")            # users and roles
 _USER_MENTION_RE = re.compile(r"<@!?(\d+)>")
 _CHANNEL_MENTION_RE = re.compile(r"<#(\d+)>")
 _SNOWFLAKE_RE = re.compile(r"\d{15,20}")
+_SEND_RE = re.compile(r"^!(?:send|전송|파일)(?:\s+(.+))?$", re.IGNORECASE)
 
 intents = discord.Intents.default()
 intents.message_content = True      # PRIVILEGED — enable it in the dev portal
@@ -152,24 +144,43 @@ async def _channel_context(channel) -> str:
     return "\n".join(lines)[:10000]
 
 
-async def _download_images(message) -> list[str]:
-    """Save the owner's image attachments for Claude to read locally."""
-    paths = []
-    for i, att in enumerate(message.attachments):
-        if not (att.content_type or "").startswith("image/"):
+async def _download_attachments(message) -> tuple[list[str], list[str]]:
+    """Save the owner's attachments for Claude to read locally.
+
+    Same deny-by-default allowlist as every other platform (core.files):
+    documents, data and source text in, executables and archives refused.
+    Returns (image paths, document paths) plus posts nothing — the caller
+    reports what was skipped.
+    """
+    imgs: list[str] = []
+    docs: list[str] = []
+    rejected: list[str] = []
+    img_dir, doc_dir = files.inbox_dir("img"), files.inbox_dir("files")
+    files.prune_old(img_dir)
+    files.prune_old(doc_dir)
+    for i, att in enumerate(message.attachments[:files.MAX_INBOUND_FILES]):
+        name = att.filename or "file"
+        kind = files.classify_inbound(name, att.content_type or "")
+        if not kind:
+            rejected.append(name)
             continue
-        if att.size > MAX_FILE_BYTES:
-            log.warning("attachment too large, skipped: %s", att.filename)
+        if att.size > files.MAX_FILE_BYTES:
+            log.warning("attachment over the size cap, skipped: %s", name)
             continue
-        IMG_DIR.mkdir(exist_ok=True)
-        name = re.sub(r"[^\w.\-]", "_", att.filename or f"image{i}")[-60:]
-        dest = IMG_DIR / f"{int(time.time())}_{i}_{name}"
+        dest = ((img_dir if kind == "image" else doc_dir)
+                / files.safe_filename(name, i))
         try:
             dest.write_bytes(await att.read())
-            paths.append(str(dest))
+            (imgs if kind == "image" else docs).append(str(dest))
         except Exception:
-            log.exception("image download failed")
-    return paths
+            log.exception("attachment download failed")
+    if rejected:
+        try:
+            await message.channel.send(
+                t("file_rejected", names=", ".join(rejected[:4])))
+        except Exception:
+            log.exception("rejection notice failed")
+    return imgs, docs
 
 
 # ─────────────────────────── job handling ───────────────────────────
@@ -195,6 +206,9 @@ def _handle(job: dict) -> None:
         else:
             context, kind, scope_label = "", "kind_thread", ""
         prompt = build_prompt(context, job["text"], kind, scope_label)
+        if job.get("doc_paths"):
+            prompt = t("file_note", n=len(job["doc_paths"]),
+                       paths="\n".join(f"- {p}" for p in job["doc_paths"])) + prompt
         if job.get("image_paths"):
             prompt = t("image_note", n=len(job["image_paths"]),
                        paths="\n".join(f"- {p}" for p in job["image_paths"])) + prompt
@@ -236,6 +250,7 @@ def _handle(job: dict) -> None:
         usage.record(job.get("kind", "?"), job.get("user", "?"),
                      res["reason"] == "ok", dur, res["reason"],
                      org=job.get("org"))
+        _budget_alerts(budget.note_usage())
         log.info("job id=%s kind=%s user=%s ev=%s reason=%s dur=%ds chars=%d",
                  job.get("id"), job.get("kind"), job["user"], job["event_id"],
                  res["reason"], int(dur), len(res["text"]))
@@ -245,7 +260,10 @@ def _handle(job: dict) -> None:
             time.sleep(30)
             return
         # Discord renders standard Markdown, so Claude's output goes as-is.
-        _safe_post(job, job.get("reply_prefix", "") + res["text"])
+        body = job.get("reply_prefix", "") + res["text"]
+        if not _safe_post(job, body) and job.get("fallback_channel"):
+            _post(job["fallback_channel"],
+                  t("sched_post_failed", cid=job["channel"]) + body)
         if job.get("user") == OWNER_ID:
             _upload_reply_files(job, res["text"])
     finally:
@@ -259,35 +277,34 @@ def _handle(job: dict) -> None:
 
 def _upload_reply_files(job: dict, raw_text: str) -> None:
     """Owner-only: upload local output files the reply references by absolute
-    path (whitelisted extensions, under WORK_DIR, size-capped, deduped)."""
+    path (known output extensions, under WORK_DIR, size-capped, deduped)."""
     channel = _resolve_channel(job["channel"])
     if channel is None:
         return
-    work = Path(config.WORK_DIR).resolve()
-    seen: set = set()
-    uploaded = 0
-    for m in _PATH_RE.finditer(raw_text or ""):
-        if uploaded >= MAX_UPLOADS:
-            break
+    for rp in files.find_reply_files(raw_text):
         try:
-            rp = Path(m.group(0)).resolve()
-        except Exception:
-            continue
-        if rp in seen:
-            continue
-        seen.add(rp)
-        try:
-            rp.relative_to(work)             # must live under WORK_DIR
-        except ValueError:
-            continue
-        try:
-            if not rp.is_file() or rp.stat().st_size > MAX_FILE_BYTES:
-                continue
             _call(channel.send(content=t("file_uploaded", name=rp.name),
                                file=discord.File(str(rp))), timeout=120)
-            uploaded += 1
         except Exception:
             log.exception("file upload failed")
+
+
+def _send_files(channel, spec: str) -> str:
+    """Owner `!send <path>` — upload WORK_DIR files into this channel.
+    Returns a message to post, or '' when every file went out cleanly."""
+    paths, err, detail = files.resolve_outbound(spec)
+    if err:
+        return t(err, p=detail, name=detail, work=config.WORK_DIR,
+                 max=files.MAX_FILE_MB)
+    failed = 0
+    for rp in paths:
+        try:
+            _call(channel.send(content=t("file_uploaded", name=rp.name),
+                               file=discord.File(str(rp))), timeout=120)
+        except Exception:
+            log.exception("send upload failed")
+            failed += 1
+    return t("send_fail", n=failed) if failed else ""
 
 
 async def _alert_owner(text: str) -> None:
@@ -306,21 +323,36 @@ def alert_owner(text: str) -> None:
     _call(_alert_owner(text))
 
 
+def _budget_alerts(alerts: list) -> None:
+    """Budget thresholds go to the owner's DM. No buttons — Discord components
+    would need their own routing, and the text commands cover it."""
+    for a in alerts:
+        text = t("budget_alert_full" if a["threshold"] >= 100
+                 else "budget_alert_warn",
+                 label=a["label"], used=a["used"], limit=a["limit"],
+                 pct=a["threshold"])
+        text += "\n" + (t(a["applied"]) if a["applied"] else t("budget_help"))
+        alert_owner(text)
+
+
 def _on_job_error(job: dict, e: Exception) -> None:
     _safe_post(job, t("job_error", e=e))
 
 
-def _safe_post(job: dict, text: str) -> None:
-    _post(job["channel"], text)
+def _safe_post(job: dict, text: str) -> bool:
+    return _post(job["channel"], text)
 
 
-def _post(channel_id: str, text: str) -> None:
+def _post(channel_id: str, text: str) -> bool:
+    """Deliver (chunked). False when the channel is unreachable — a scheduled
+    fire aimed somewhere Loki isn't, most often."""
     channel = _resolve_channel(channel_id)
     if channel is None:
         log.warning("no channel to post to: %s", channel_id)
-        return
+        return False
     for chunk in _chunks(text):
         _call(channel.send(chunk))
+    return True
 
 
 def _chunks(s: str):
@@ -343,8 +375,10 @@ def _fire_schedule(s: dict) -> None:
     A scheduled run is therefore always guarded — it can still do the work,
     it just can't rewrite the permission files.
     """
+    target = s.get("post_to") or s["channel"]
     jobs.submit({
-        "channel": s["channel"], "thread": None, "text": s["prompt"],
+        "channel": target, "thread": None, "text": s["prompt"],
+        "fallback_channel": s["channel"] if target != s["channel"] else None,
         "user": OWNER_ID, "event_id": f"sched-{s['id']}-{int(time.time())}",
         "in_thread": False, "is_mention": False, "is_dm": False,
         "permission_mode": config.PERMISSION_MODE, "kind": "scheduled",
@@ -407,14 +441,24 @@ async def _dispatch(message: discord.Message, is_mention: bool,
         return
 
     text = _strip_mention(message.content or "")
-    image_paths = await _download_images(message) if is_owner else []
-    if not text and not image_paths:
+    img_paths, doc_paths = ((await _download_attachments(message)) if is_owner
+                            else ([], []))
+    if not text and not img_paths and not doc_paths:
         return
-    if not text:
-        text = t("image_default")
+    if not text:                           # attachment dropped with no caption
+        text = t("image_default") if img_paths else t("file_default")
 
     org = None if is_owner else orgs.resolve(user, channel_id)
     session_key = _session_key(channel)
+
+    if is_owner:
+        m = _SEND_RE.match(text)
+        if m:
+            msg = (_send_files(channel, m.group(1)) if m.group(1)
+                   else t("send_usage"))
+            if msg:
+                await channel.send(msg)
+            return
 
     reply = commands.handle(text, {
         "channel": channel_id,
@@ -427,11 +471,31 @@ async def _dispatch(message: discord.Message, is_mention: bool,
                      if i != str(bot.user.id)],
         "is_user_id": lambda tk: bool(_SNOWFLAKE_RE.fullmatch(tk)),
         "is_channel_id": lambda tk: bool(_SNOWFLAKE_RE.fullmatch(tk)),
+        "chan_ref": lambda cid: f"<#{cid}>",
     })
     if reply is not None:
         for chunk in _chunks(reply):
             await channel.send(chunk)
         return
+
+    # Command aliases — `!name args` becomes the request and then runs through
+    # the ordinary path, so throttle, queue and guest scope all still apply.
+    kind = "owner" if is_owner else "guest"
+    reply_prefix = ""
+    expanded = alias.resolve(text, is_owner, org, orgs.allows_command)
+    if expanded is not None:
+        text, reply_prefix = expanded
+        if not text:
+            return                  # known alias, this caller wasn't granted it
+        kind = "alias"
+
+    # Guest budget — a hard cap on what other people may spend. Owners are
+    # never capped, same principle as the throttle below.
+    if not is_owner:
+        ok, key, params = budget.check_guest(org)
+        if not ok:
+            await channel.send(t(key, **params))
+            return
 
     # Guest throttle — an org's rate overrides the global GUEST_RATE_PER_HOUR.
     if not is_owner:
@@ -456,14 +520,16 @@ async def _dispatch(message: discord.Message, is_mention: bool,
                  "text": text, "user": user, "event_id": str(message.id),
                  "in_thread": in_thread, "is_mention": is_mention,
                  "is_dm": _is_dm(channel), "permission_mode": permission_mode,
-                 "kind": "owner" if is_owner else "guest",
+                 "kind": kind, "reply_prefix": reply_prefix,
                  "session_key": session_key,
-                 "org": org, "image_paths": image_paths})
+                 "org": org, "image_paths": img_paths, "doc_paths": doc_paths})
 
 
 # ─────────────────────────── entrypoint ───────────────────────────
 def run() -> None:
     scope.ensure_manifest()
+    alias.ensure_file()
+    selftest.run()
     health.start("discord")
     jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
     scheduler.start(_fire_schedule)

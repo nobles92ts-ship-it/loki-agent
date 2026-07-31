@@ -1,7 +1,8 @@
 """Entrypoint: ``python -m loki [command]``.
 
     python -m loki                 run the worker (platform from LOKI_PLATFORM)
-    python -m loki slack|discord   run the worker on that platform
+    python -m loki slack|discord|telegram
+                                   run the worker on that platform
     python -m loki status          is the worker up right now?
     python -m loki doctor          full install check + liveness
     python -m loki gateway …       install | uninstall | ensure | stop | restart
@@ -16,7 +17,7 @@ import sys
 
 from loki.core import config
 
-PLATFORMS = ("slack", "discord")
+PLATFORMS = ("slack", "discord", "telegram")
 GATEWAY_SUBS = ("install", "uninstall", "ensure", "stop", "restart", "status")
 
 USAGE = f"""usage: python -m loki [command]
@@ -36,6 +37,8 @@ def _run_worker(name: str) -> int:
     config.validate_core()
     if name == "discord":
         from loki.platforms.discord import adapter
+    elif name == "telegram":
+        from loki.platforms.telegram import adapter
     else:
         from loki.platforms.slack import adapter
     adapter.run()
