@@ -1,5 +1,33 @@
 # Changelog
 
+## [v1.7.0] 2026-07-30
+
+Telegram, files that go both ways, and spending you control.
+
+### Platform
+
+- **Telegram adapter** — `LOKI_PLATFORM=telegram` (or `python -m loki telegram`) plus a token from @BotFather and your numeric id. **No new dependency**: the Bot API is plain HTTPS + JSON, so `urllib` covers it rather than making every Slack and Discord user install an SDK they don't run. Telegram's surfaces map onto the existing trust model — a private chat is the owner's DM (one id, everyone else ignored), groups are the guest surface where you must @mention or reply to be heard, and unaddressed chatter only runs inside an auto-listen zone. Guests stay read-only, path-scoped, rate-limited and budget-capped. → [docs/TELEGRAM.md](docs/TELEGRAM.md)
+- **Differences, documented not hidden** — a bot can't read history it wasn't present for, so group context is what Loki observed while running. Replies render as HTML (MarkdownV2 needs escaping *outside* markup, where one stray character rejects the whole message) with a plain-text retry if a send is refused. `!check` and `!bot` stay Slack-only. Session reset needed nothing new — `!new` already routes through core.
+
+### Features
+
+- **Attachments in, files out** — inbound attachments now cover documents, data and source text through a deny-by-default extension allowlist; executables and archives are refused before download, and the inbox is size-capped (`LOKI_MAX_FILE_MB`, default 20) and pruned weekly. Outbound gains `!send <path>` — relative to `WORK_DIR`, absolute inside it, or a glob — resolved first and then fenced, so a symlink pointing out is rejected. Owner-only and deliberately not grantable via `!org allow`. Because the policy lives in `core/files.py`, Discord picks up the same allowlist and fence and loses its duplicated copy.
+- **Prompt aliases (`!alias`)** — a prompt you retype becomes a command, defined in `<WORK_DIR>/loki/aliases.md` (human-editable, re-read on change, same as `loki.md` and the org files). `{args}` marks where arguments land. An alias is a prompt, not a permission: it runs through the ordinary path, and built-in names — including `!new`, `!plugins`, and names reserved for commands that don't exist yet — can never be shadowed. Guests only fire what their org was granted.
+- **Schedules to a channel** — `!schedule daily 09:00 #standup <prompt>` posts the run to a channel instead of back to where it was created. A scheduled fire runs at the owner's full scope, so the confirmation says so; an unreachable channel falls back with the result attached rather than dropping the run.
+- **Usage budgets (`!budget`)** — daily/weekly and per-org caps that refuse *guests* once reached; owners are never capped. Caps and mitigations are separate on purpose: a cap refuses guests outright, but pinning a lighter model or pausing guests changes the whole install, so those are **manual by default** — at 80% and 100% Loki asks in DM and waits. `!budget mode auto` opts into it acting alone. An org's cap binds that org alone.
+- **Bot triggers (`!bot`, Slack)** — an allowlisted bot can wake Loki **inside an auto-listen zone**, turning a CI failure into an investigation. Two opt-ins, both the owner's. The bot arrives as a guest and its message is text, never a command. Loki's own ids are refused before the allowlist is read, so no state edit can start a loop. `!bot seen` lists ids to copy.
+- **Docker / NAS** — `Dockerfile` + `docker-compose.yml` + [docs/DOCKER.md](docs/DOCKER.md). The image carries no credentials. `TZ` is wired through (a UTC container fires `!schedule daily 09:00` at the wrong hour) and git's dubious-ownership check is relaxed in-image (a bind-mounted work dir is nearly always a different uid). The container is a *tighter* fence than a desktop account — the sensible place for write mode.
+
+### Fixes
+
+- The read-only boot self-test was Slack-only, so **Discord shipped without the one check that verifies plan mode cannot write**. It now lives in `core/selftest.py` and runs on every adapter.
+- A bad `SLACK_BOT_TOKEN` raised a raw Bolt traceback from module import, since Bolt verifies the token when the `App` is constructed and the friendly handler in `run()` never ran. Both it and its Telegram twin now exit 2 with a usable message.
+- `!org allow` silently granted nothing for Korean command names — org command tokens now accept Korean, matching what alias names allow.
+
+### Tests
+
++232 cases (186 → 418). Adapter dispatch is now testable at all: `conftest` stubs the Slack SDK, so routing guarantees — who gets refused, what a bot may not do, where a failed post ends up — are covered rather than reasoned about. Two real bugs were caught that way: one org's exhausted budget refusing every other org's guests, and a first cut of the schedule parser eating "CHECK the logs" as a destination channel.
+
 ## [v1.6.4] 2026-07-29
 
 Staying up, and making it yours.

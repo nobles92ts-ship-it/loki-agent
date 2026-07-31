@@ -87,7 +87,7 @@ Never call that bridge from the loop itself — scheduling onto the loop and the
 ## Roadmap order (difficulty-sorted)
 
 1. ~~**Discord** — gateway websocket~~ ✅ shipped in v1.6.3
-2. **Telegram** — simplest bot API, long-polling (no public URL)
+2. ~~**Telegram**~~ — shipped in v1.7, long-polling, no extra dependency
 3. **Home Assistant** — webhook/conversation agent
 4. **Signal** — via `signal-cli` (external dependency)
 5. **WhatsApp** — Business API access is the barrier
