@@ -83,6 +83,7 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 | `JOB_CONCURRENCY` | `2` | parallel Claude jobs (same conversation always stays in order) |
 | `GUEST_RATE_PER_HOUR` | `10` | max guest requests per rolling hour (`0` = unlimited); owners never limited |
 | `CLAUDE_CONFIG_DIR` | default account | give Loki its own Claude login — see [Dedicated account](#dedicated-account) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | unset | pin every spawn to one account, whoever the terminal is logged in as — see [Dedicated account](#dedicated-account) |
 | `LOKI_LANG` | `en` | bot message language: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | how much channel history a bare mention sees |
 | `CLAUDE_CMD` | auto-detected | full path to `claude` if not on PATH |
@@ -97,6 +98,10 @@ $env:CLAUDE_CONFIG_DIR = "C:\Users\You\.claude-loki"
 claude            # run /login, pick the account Loki should use
 ```
 Then set `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki` in `.env` (the wizard also asks). Loki now authenticates as that account, no matter which account your terminal uses. Leave it blank to share your default login.
+
+That covers most setups, but not one: anything reading `~/.claude/skills` or `~/.claude/agents` at run time can't be moved to another config dir without taking its toolchain along. Pin the account with a **token** instead — `claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN` in `.env`. It outranks the stored login, so the config dir stays where it is and only the credential is replaced.
+
+Either way, **verify it rather than assume it**: an invalid or expired token doesn't raise — `claude` quietly falls back to the stored login and answers normally — so `python -m loki doctor` checks the pin against an *empty* config dir, where there's nothing to fall back to. Walkthrough: [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token).
 
 ## Permissions — who can do what
 
@@ -355,6 +360,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.6.4 | ✅ **supervision** (`status` · `doctor` · `gateway`, heartbeat, restart-on-crash) · **plugins** (`plugins/`, one file per command) |
 | next | per-user sessions in shared channels · token-level usage — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 | v1.7 | ✅ document attachments + `!send` · prompt aliases (`!alias`) · schedules to a channel · usage budgets (`!budget`) · bot triggers (`!bot`) · **Telegram adapter** · Docker/NAS |
+| v1.8 | ✅ **account pin** (`CLAUDE_CODE_OAUTH_TOKEN` — one account whoever the terminal is logged in as, verified against an empty config dir) · **guest scope fix** (the worker's own tree is no longer readable on an empty allowlist) |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

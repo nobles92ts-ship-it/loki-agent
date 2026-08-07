@@ -83,6 +83,7 @@ cd loki-agent
 | `JOB_CONCURRENCY` | `2` | 동시 Claude 작업 수 (같은 대화는 항상 순서 유지) |
 | `GUEST_RATE_PER_HOUR` | `10` | 게스트 1인당 시간당 최대 요청 수 (`0`=무제한). 오너는 무제한 |
 | `CLAUDE_CONFIG_DIR` | 기본 계정 | Loki에게 전용 Claude 로그인 부여 — [전용 계정](#전용-계정) 참조 |
+| `CLAUDE_CODE_OAUTH_TOKEN` | 미설정 | 터미널이 어떤 계정으로 로그인돼 있든 모든 실행을 한 계정으로 고정 — [전용 계정](#전용-계정) 참조 |
 | `LOKI_LANG` | `en` | 봇 메시지 언어: `en` / `ko` |
 | `LOKI_CHANNEL_CTX_DAYS` / `_MSGS` | `7` / `120` | 채널 멘션이 보는 최근 대화 범위 |
 | `CLAUDE_CMD` | 자동탐지 | PATH에 없을 때 claude 전체 경로 |
@@ -97,6 +98,10 @@ $env:CLAUDE_CONFIG_DIR = "C:\Users\You\.claude-loki"
 claude            # /login 실행 → Loki가 쓸 계정 선택
 ```
 그다음 `.env`에 `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki`를 넣는다(마법사도 물어봄). 이제 터미널이 어떤 계정을 쓰든 Loki는 그 계정으로 인증한다. 비워두면 기본 로그인을 공유.
+
+대부분은 이걸로 되지만 한 경우가 안 된다. 실행 시점에 `~/.claude/skills`·`~/.claude/agents`를 읽는 파이프라인은 config 디렉토리를 옮기면 툴체인까지 딸려가 버린다. 그럴 땐 **토큰**으로 계정을 고정한다 — `claude setup-token`으로 발급해 `.env`에 `CLAUDE_CODE_OAUTH_TOKEN`을 넣으면 된다. 저장된 로그인보다 우선순위가 높아서, config 디렉토리는 그대로 두고 **자격증명만** 대체한다.
+
+어느 쪽이든 **가정하지 말고 확인해라**. 토큰이 잘못됐거나 만료돼도 오류가 나지 않는다 — `claude`가 저장된 로그인으로 조용히 폴백해 정상 응답한다. 그래서 `python -m loki doctor`는 **빈** config 디렉토리에 대고 검사한다. 폴백할 대상이 없어야 토큰이 혼자 서는지 알 수 있기 때문이다. 절차: [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token)
 
 ## 권한 — 누가 뭘 할 수 있나
 
@@ -339,6 +344,7 @@ Loki → ✅ 완료 — 시트 확인해줘.
 | v1.6.4 | ✅ **프로세스 감독**(`status`·`doctor`·`gateway`, 하트비트, 죽으면 재기동) · **플러그인**(`plugins/`, 명령 하나=파일 하나) |
 | 다음 | 채널 사용자별 세션 · 토큰 단위 사용량 — [docs/ROADMAP.md](docs/ROADMAP.md) |
 | v1.7 | ✅ 문서 첨부 + `!send` · 프롬프트 별칭(`!alias`) · 예약 채널 게시 · 사용량 예산(`!budget`) · 봇 트리거(`!bot`) · **Telegram 어댑터** · Docker/NAS |
+| v1.8 | ✅ **계정 고정**(`CLAUDE_CODE_OAUTH_TOKEN` — 터미널 로그인과 무관하게 한 계정, 빈 config 디렉토리로 검증) · **게스트 범위 수정**(허용 목록이 비면 워커 자신의 트리도 안 읽힘) |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 
