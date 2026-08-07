@@ -117,7 +117,9 @@ def test_add_replaces_without_duplicating(work):
     alias.add("a", "first")
     assert alias.add("a", "second") == "replaced"
     assert alias.get("a") == "second"
-    assert alias.aliases_file().read_text().count("- a:") == 1
+    # encoding is explicit: the template Loki writes has non-ASCII in it, and a
+    # cp949/cp1252 default read raises rather than compares.
+    assert alias.aliases_file().read_text(encoding="utf-8").count("- a:") == 1
 
 
 def test_add_multiline_round_trips(work):
@@ -137,7 +139,7 @@ def test_remove(work):
     alias.add("b", "three")
     assert alias.remove("a") is True
     assert alias.get("a") is None and alias.get("b") == "three"
-    assert "two" not in alias.aliases_file().read_text()
+    assert "two" not in alias.aliases_file().read_text(encoding="utf-8")
     assert alias.remove("a") is False
 
 

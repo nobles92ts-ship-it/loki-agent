@@ -65,8 +65,9 @@ the boundary Loki wants. Leave it on.
 
 ## Everything that is the same
 
-`!schedule`, `!alias`, `!budget`, `!org`, `!usage`, `!jobs`, `!cancel`,
-`!learn`, `!listen`, `!block`, `!send`, `!new`, `!plugins`, `!stop` — all of
+`!schedule`, `!alias`, `!budget`, `!account`, `!org`, `!usage`, `!jobs`,
+`!cancel`, `!learn`, `!listen`, `!block`, `!send`, `!new`, `!plugins`,
+`!stop` — all of
 it, because those live in `loki/core/commands.py` and every adapter calls
 the same router. File input
 uses the same allowlist, `!send` the same WORK_DIR fence, guests the same

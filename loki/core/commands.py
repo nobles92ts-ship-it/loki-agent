@@ -18,8 +18,8 @@ import re
 import time
 from typing import Callable
 
-from . import (alias, autolisten, blocked, budget, config, jobs, learn, orgs,
-               plugins, scheduler, sessions, usage)
+from . import (account, alias, autolisten, blocked, budget, config, jobs,
+               learn, orgs, plugins, scheduler, sessions, usage)
 from .config import t
 
 # Command surface. Korean aliases sit alongside the English ones so a Korean
@@ -40,6 +40,7 @@ ALIAS_RE = re.compile(r"^!(?:alias|별칭)\b\s*(.*)$", re.IGNORECASE | re.DOTALL
 _ALIAS_SUB_RE = re.compile(r"^(list|add|remove|delete|목록|추가|삭제|제거)\b\s*(.*)$",
                            re.IGNORECASE | re.DOTALL)
 BUDGET_RE = re.compile(r"^!(?:budget|예산)\b\s*(.*)$", re.IGNORECASE)
+ACCOUNT_RE = re.compile(r"^!(?:account|계정)\b\s*(.*)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
     r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
@@ -136,6 +137,9 @@ def _builtin(text: str, ctx: dict) -> str | None:
     m = BUDGET_RE.match(text)
     if m:
         return budget_cmd(m.group(1))
+    m = ACCOUNT_RE.match(text)
+    if m:
+        return account_cmd(m.group(1))
     m = ORG_RE.match(text)
     if m:
         return org_cmd(m.group(1), ctx)
@@ -248,7 +252,12 @@ def alias_cmd(arg: str) -> str:
             return t("alias_list_empty")
         lines = [t("alias_list_header", n=len(items))]
         for name, template in sorted(items.items()):
-            lines.append(t("alias_list_line", name=name,
+            # An alias defined before a command claimed its name still sits in
+            # the file and can never fire. Say so here rather than let it look
+            # healthy — this is the drift the definition-time check can't catch.
+            owner = alias.shadowed_by(name)
+            lines.append(t("alias_list_dead" if owner else "alias_list_line",
+                           name=name, owner=owner or "",
                            prompt=template.replace("\n", " ")[:70]))
         return "\n".join(lines)
     if sub in ("remove", "delete", "삭제", "제거"):
@@ -260,6 +269,9 @@ def alias_cmd(arg: str) -> str:
         return t("alias_help")
     name = parts[0].lstrip("!")
     outcome = alias.add(name, parts[1])
+    if outcome.startswith("shadowed:"):
+        return t("alias_shadowed", name=name.lower(),
+                 owner=outcome.split(":", 1)[1])
     return t(f"alias_{outcome}", name=name.lower(), path=alias.aliases_file())
 
 
@@ -295,6 +307,44 @@ def budget_cmd(arg: str) -> str:
     if head in budget.ACTIONS:
         return t(budget.apply(head))
     return t("budget_help")
+
+
+# ─────────────────────────── account pin ───────────────────────────
+def account_cmd(arg: str) -> str:
+    """`!account [on|off]` — which Claude account the next spawn runs as.
+
+    Off falls back to the login in the config dir. Remembered sessions are
+    dropped on a flip: replaying one account's conversation under the other's
+    login (and quota) is not something to do quietly.
+    """
+    a = (arg or "").strip().lower()
+    if not a:
+        return fmt_account()
+    on = a in ("on", "켜기", "켜", "사용")
+    off = a in ("off", "끄기", "꺼", "해제")
+    if not (on or off):
+        return t("account_help")
+    if not account.configured():
+        return t("account_unset")
+    if not account.set_on(on):
+        return t("account_nochange", state=t("account_on" if on else "account_off"))
+    dropped = sessions.reset_all()
+    key = "account_switched_on" if on else "account_switched_off"
+    msg = t(key, who=account.fingerprint(), dir=account.status()["config_dir"])
+    return msg + ("\n" + t("account_sessions_cleared", n=dropped) if dropped else "")
+
+
+def fmt_account() -> str:
+    s = account.status()
+    if not s["configured"]:
+        return t("account_unset")
+    return "\n".join([
+        t("account_status_header",
+          state=t("account_on" if s["on"] else "account_off")),
+        t("account_status_pin", who=s["fingerprint"]),
+        t("account_status_dir", dir=s["config_dir"]),
+        t("account_status_hint"),
+    ])
 
 
 def fmt_budget() -> str:

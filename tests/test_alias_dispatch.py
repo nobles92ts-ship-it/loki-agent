@@ -53,7 +53,9 @@ def test_builtin_commands_are_never_shadowed(aliased):
     aliased.alias._invalidate()
     aliased._dispatch({"event_id": "a5"}, event(text="!jobs"), is_mention=False)
     assert aliased.submitted == []                    # handled as the built-in
-    assert "job" in aliased.app.client.texts()[0].lower()
+    # Compare against the translated string, not an English word: an install
+    # whose .env sets LOKI_LANG=ko answers in Korean and this asserted "job".
+    assert aliased.app.client.texts()[0] == aliased.config.t("jobs_none")
 
 
 # ── permissions ──────────────────────────────────────────────────────────────

@@ -50,6 +50,12 @@ actually gets it.
 Plugins are matched **after** the built-in commands, so no plugin can shadow
 `!stop`, `!org`, or anything else Loki depends on.
 
+They are matched **before** aliases, though, so your plugin's name is one an
+alias may not take. `!alias add <that name> …` is refused and says which plugin
+holds it; an alias that already existed when you dropped the file in is flagged
+in `!alias list`, because from then on only renaming it will make it fire. You
+don't have to register the name anywhere — the check reads your `MATCH`.
+
 ## Failure is contained
 
 - A plugin that fails to import is logged and skipped — the others still load,

@@ -113,9 +113,21 @@ def _thread_context(channel: str, thread_ts: str) -> str:
     return "\n".join(lines)[:8000]   # cap so the prompt stays bounded
 
 
+def slack_ts(epoch: float) -> str:
+    """Epoch seconds → a timestamp Slack's API actually accepts.
+
+    Slack's own ts format is 6 decimal places. Hand `conversations.history` an
+    `oldest` with more than that — which `str(float)` produces most of the time
+    (`str(1786089257.1934988)`) — and it answers `ok: true` with an **empty**
+    message list instead of an error. Every caller reads that as "the channel
+    had nothing to say", and nothing in the log says otherwise.
+    """
+    return f"{epoch:.6f}"
+
+
 def _channel_context(channel: str) -> str:
     """Fetch the channel's recent messages (data, not commands). Chronological."""
-    oldest = str(time.time() - CHANNEL_CTX_DAYS * 86400)
+    oldest = slack_ts(time.time() - CHANNEL_CTX_DAYS * 86400)
     try:
         r = app.client.conversations_history(
             channel=channel, oldest=oldest, limit=CHANNEL_CTX_MSGS)
