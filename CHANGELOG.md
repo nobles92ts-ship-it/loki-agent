@@ -1,5 +1,36 @@
 # Changelog
 
+## [v1.8.1] 2026-08-08
+
+Three failures that reported themselves as nothing at all — and a switch for the account pin.
+
+Every fix in this release is the same shape: something returned successfully while doing nothing. An empty channel history that looked like a quiet channel. A folder grant that looked like a broken manifest. An alias that saved, listed, and never fired. Thanks to [@olyj2e-crypto](https://github.com/olyj2e-crypto) for reporting all three from a fork running in production, each with a diagnosis and a patch.
+
+### What you can do now
+
+- **Choose which account spends**, without editing `.env` or restarting: `!account off` runs the next request as the config dir's login, `!account on` goes back to the pinned one. For anyone holding a personal subscription *and* a company account.
+- **Read channel context again** on Slack. If `!summary` or an auto-listen zone has been answering as though the channel were empty, it was — this fixes it.
+- **Share folders from a WORK_DIR that isn't on `C:`.** Every grant in `loki.md` and every org manifest was being cancelled.
+
+### Changes
+
+#### Fixes
+
+- **Slack returned zero messages for every history fetch** ([#3](https://github.com/nobles92ts-ship-it/loki-agent/issues/3)). `oldest` was built with `str(time.time() - …)`, which renders 7+ decimal places most of the time. `conversations.history` answers `ok: true` with an **empty list** rather than an error when it gets more than 6 — so channel context and `!summary` ran on nothing, and no log line said why. Timestamps now go through `slack_ts()`, the only place that formats one. It was the only such call in the tree; `!summary`'s own fetch and the thread replies use Slack-supplied strings.
+- **A WORK_DIR on `D:` or `E:` shared nothing at all** ([#2](https://github.com/nobles92ts-ship-it/loki-agent/issues/2)). The guest fence blanket-denied whole drive roots, and deny beats allow — so on any install whose WORK_DIR wasn't under `C:`, every folder the manifest granted was cancelled with it. Every guest lookup came back permission denied and nothing pointed at the drive rule, so it read as a broken manifest. A root that *contains* WORK_DIR now loses its blanket rule and is closed sibling by sibling along the ancestor chain instead: the corridor down to WORK_DIR stays open, everything beside it stays shut. Roots that don't contain WORK_DIR keep the blanket rule, and `guard.deny_patterns()` still lands last so nothing above it can undo the secret denies.
+  - Two consequences worth knowing: this **tightens** installs that were fine before (the other top-level folders on WORK_DIR's own drive were never denied by name), and it closes the same hole on Linux and in Docker, where the drive-letter roots never applied to begin with.
+- **`!alias` accepted names that nothing could ever call** ([#4](https://github.com/nobles92ts-ship-it/loki-agent/issues/4)). Aliases are matched last, and the guard against shadowing was a hardcoded set of the *shipped* command names — which said nothing about `plugins/`, the supported extension point, or a fork's own commands. `!alias add tc …` against a live `!tc` saved, listed, and silently never fired. The check now probes the **live dispatch** (`core/registry.py`): built-ins, private commands, checklists and every loaded plugin's own `MATCH`, so nothing has to be registered by hand and the list cannot drift from the code again. Refusal names what holds the name. And because a plugin can claim a name an alias already had, `!alias list` flags any alias that has since gone dead — the drift a definition-time check can't see.
+- **Tests were locale- and encoding-dependent.** Three failed on a Korean-locale Windows install (`LOKI_LANG=ko`, cp949) while CI stayed green, because two assertions compared against English strings and two file reads took the platform default encoding. The suite now passes under ko/en × cp949/UTF-8.
+
+#### Features
+
+- **`!account [on|off]`** — the account pin becomes switchable at run time. `.env` still decides *which* account; this decides whether to use it, so `on` always has something to return to and the token is never rewritten or cleared. Off falls back to the config dir's login (pre-v1.8 behaviour). Unset is on, so nothing changes for an install that never touches it. The choice survives a restart, applies from the next request (running jobs finish under the account they started with), and reaches both spawn paths through one accessor, so it can't be honoured on one and missed on the other. Remembered sessions are cleared on a flip — a resumed conversation would otherwise replay under the other account's login and quota. `doctor` reports the switch and stops probing a pin nothing is running under. → [README](README.md#two-accounts--switching-which-one-spends)
+
+#### Docs
+
+- README (en/ko): the `!account` command, a "two accounts" section, and how alias names are now checked.
+- `docs/SETUP.md` — switching the pin off without unpinning it. `docs/PLUGINS.md` — your plugin's name is one an alias may not take. `docs/TELEGRAM.md`, `.env.example` — kept in step.
+
 ## [v1.8.0] 2026-08-07
 
 One account, whoever is logged in — and a guest fence that actually holds.

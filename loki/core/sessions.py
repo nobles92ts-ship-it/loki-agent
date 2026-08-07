@@ -109,6 +109,22 @@ def reset(key: str | None) -> bool:
         return True
 
 
+def reset_all() -> int:
+    """Forget every conversation. Returns how many were dropped.
+
+    For changes that make the remembered sessions wrong rather than stale —
+    switching the account a spawn runs as, for one: resuming would replay one
+    account's thread under the other's login and quota.
+    """
+    with _lock:
+        n = len(_state)
+        if not n:
+            return 0
+        _state.clear()
+        _save()
+    return n
+
+
 def active() -> int:
     """How many conversations are currently remembered (diagnostics)."""
     now = time.time()

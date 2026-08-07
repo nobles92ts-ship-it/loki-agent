@@ -103,6 +103,20 @@ That covers most setups, but not two cases. Anything reading `~/.claude/skills` 
 
 Either way, **verify it rather than assume it**: an invalid or expired token doesn't raise — `claude` quietly falls back to the stored login and answers normally — so `python -m loki doctor` checks the pin against an *empty* config dir, where there's nothing to fall back to. Walkthrough: [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token).
 
+#### Two accounts — switching which one spends
+
+Pinning fixes the account, which is what you want right up until you have **two** — a personal subscription and the company's, say — and the question becomes which one this afternoon's work should come out of. Editing `.env` and restarting is a poor way to answer a question that changes during the day, so the switch is a command:
+
+```
+!account            # which account the next request runs as
+!account off        # ignore the pinned token — use the config dir's own login
+!account on         # back to the pinned account
+```
+
+The token in `.env` is never written to or cleared, so `on` always has something to go back to; `off` simply stops passing it, and the spawn falls back to whatever the config dir is logged in as — the pre-v1.8 behaviour. It takes effect on the **next** request: jobs already running finish under the account they started with. Remembered conversations are dropped on a flip, because resuming one would replay it under the other account's login and quota.
+
+Nothing changes for installs that never touch it — unset is on. `doctor` reports the switch, and stops probing a pin nothing is running under.
+
 ## Permissions — who can do what
 
 Two built-in tiers, cleanly separated:
@@ -153,10 +167,11 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!plugins` | anywhere | list your own installed commands — see [docs/PLUGINS.md](docs/PLUGINS.md) |
 | `!alias …` | anywhere | manage [prompt aliases](#aliases--your-own-commands-without-code): `list` `add <name> <prompt>` `remove <name>` |
 | `!budget …` | DM | [usage budgets](#budgets--caps-that-protect-your-subscription): caps, mode, and mitigations |
+| `!account [on\|off]` | DM | which Claude account spawns run as — the pinned token, or the config dir's own login. See [two accounts](#two-accounts--switching-which-one-spends) |
 | `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크` · `계정`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
@@ -187,7 +202,9 @@ A prompt you keep retyping becomes a command. **One markdown file** (`<WORK_DIR>
 !review PR 412                                      # {args} → "PR 412"
 ```
 
-`{args}` marks where your arguments go; without it they're appended. An alias is a *prompt*, not a new permission — it runs exactly like typing that text yourself, so the queue, throttle and guest scope all still apply, and a built-in command can never be shadowed. Owners can run any alias; guests only the ones their org was granted (`!org allow acme standup`). For pipelines that need real code rather than a prompt, the private-command hook is still the answer — see [docs/EXAMPLES.md](docs/EXAMPLES.md).
+`{args}` marks where your arguments go; without it they're appended. An alias is a *prompt*, not a new permission — it runs exactly like typing that text yourself, so the queue, throttle and guest scope all still apply. Owners can run any alias; guests only the ones their org was granted (`!org allow acme standup`). For pipelines that need real code rather than a prompt, the private-command hook is still the answer — see [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+Aliases are matched **last**, so a name any command already answers to would save and then never fire. Rather than check that against a list of the shipped commands — which says nothing about *your* plugins or a fork's own commands — Loki asks the live dispatch and refuses the name, telling you what holds it. An alias that a plugin claimed *later* shows up flagged in `!alias list`, since by then only renaming brings it back.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there — or **into a channel**, which turns a schedule into a team report. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
@@ -361,6 +378,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | next | per-user sessions in shared channels · token-level usage — see [docs/ROADMAP.md](docs/ROADMAP.md) |
 | v1.7 | ✅ document attachments + `!send` · prompt aliases (`!alias`) · schedules to a channel · usage budgets (`!budget`) · bot triggers (`!bot`) · **Telegram adapter** · Docker/NAS |
 | v1.8 | ✅ **account pin** (`CLAUDE_CODE_OAUTH_TOKEN` — one account whoever the terminal is logged in as, verified against an empty config dir) · **guest scope fix** (the worker's own tree is no longer readable on an empty allowlist) |
+| v1.8.1 | ✅ **`!account on/off`** (switch which of two accounts spends, no restart) · Slack history returned nothing on a 7-decimal `oldest` · a WORK_DIR off `C:` shared nothing · `!alias` accepted names no call could reach |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

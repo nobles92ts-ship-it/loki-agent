@@ -119,6 +119,8 @@ claude -p "Reply with exactly: PONG"
 
 The token expires after **one year** and does not auto-refresh — repeat this when it lapses.
 
+**Switching it off without unpinning.** With two accounts to choose between, `!account off` in your DM stops passing the token, so the next request runs as whoever the config dir is logged in as; `!account on` brings the pin back. `.env` is never rewritten, the choice survives a restart, and `!account` alone reports where things stand. Running jobs finish under the account they started with, and remembered conversations are dropped on a flip so one account's thread doesn't resume under the other's login and quota.
+
 **Finding your Slack member ID:** your Slack profile → **⋯ (More)** → **Copy member ID** (`U…`).
 
 Prefer manual setup? Copy `.env.example` → `.env` and fill it in, then:

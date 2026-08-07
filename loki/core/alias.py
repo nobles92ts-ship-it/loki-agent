@@ -30,9 +30,13 @@ from .config import log
 NAME_RE = re.compile(r"^[A-Za-z0-9가-힣_-]{1,32}$")
 MAX_TEMPLATE = 4000                     # a template is a prompt, not a document
 
-# Built-in command tokens (and their Korean aliases) an alias may never shadow.
-# Reserved up front for commands that don't exist yet, so adding one later can
-# never silently take over a name someone is already using.
+# Names an alias may never take. Two jobs, and only the first one needs this
+# list to be complete: names held for commands that DON'T EXIST YET (`help`,
+# `model`, `health`, …), so shipping one later can't take over a name someone
+# is already using. Names that *do* exist are found in the live dispatch by
+# core.registry — which also sees this fork's commands and anything in
+# plugins/, where a hand-kept copy of the dispatch table always drifted. The
+# shipped names below stay as a floor for the case where that probe can't run.
 RESERVED = {
     "stop", "cancel", "jobs", "usage", "schedule", "learn", "send", "block",
     "unblock", "summary", "listen", "unlisten", "listening", "org", "check",
@@ -153,6 +157,20 @@ def get(name: str) -> str | None:
     return all_items().get((name or "").lower())
 
 
+def shadowed_by(name: str) -> str | None:
+    """Which live command would swallow ``!name`` first, if any.
+
+    Local import: :mod:`core.registry` probes the loaded modules, and the
+    command modules import this one.
+    """
+    from . import registry                   # local: avoids an import cycle
+    try:
+        return registry.shadowed_by(name)
+    except Exception:
+        log.exception("registry probe failed — treating the name as free")
+        return None
+
+
 def expand(template: str, args: str = "") -> str:
     """Fill a template. `{args}` wins; otherwise arguments are appended."""
     args = (args or "").strip()
@@ -185,13 +203,17 @@ def resolve(text: str, is_owner: bool, org: str | None,
 
 # ── owner CRUD (the file stays the single source of truth) ──────────────────
 def add(name: str, template: str) -> str:
-    """'added' | 'replaced' | 'badname' | 'reserved' | 'empty' | 'error'."""
+    """'added' | 'replaced' | 'badname' | 'reserved' | 'empty' | 'error', or
+    'shadowed:<owner>' when a live command already answers to the name."""
     name = (name or "").lower()
     body = (template or "").strip()
     if not NAME_RE.match(name):
         return "badname"
     if name in RESERVED:
-        return "reserved"
+        return "reserved"                   # a shipped name: "built-in" says it
+    owner = shadowed_by(name)
+    if owner:
+        return f"shadowed:{owner}"          # a fork's or a plugin's: name it
     if not body:
         return "empty"
     existing = get(name)

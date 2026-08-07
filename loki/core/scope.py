@@ -65,6 +65,64 @@ def ensure_manifest() -> None:
         config.log.info("guest manifest template created at %s", manifest_file())
 
 
+STATIC_ROOTS = ("C:/Users/**", "C:/ProgramData/**", "C:/Windows/**",
+                "D:/**", "E:/**")
+
+
+def _rw(glob: str) -> list[str]:
+    return [f"Read({glob})", f"Grep({glob})", f"Glob({glob})"]
+
+
+def _siblings_along(work: str) -> list[str]:
+    """Deny every sibling on the way down to WORK_DIR, level by level.
+
+    A blanket root deny cannot be used on a root that *contains* WORK_DIR: deny
+    beats allow, so `E:/**` silently cancels every folder the manifest grants.
+    Walking the ancestor chain instead keeps the corridor down to WORK_DIR open
+    while closing everything beside it — with ``WORK_DIR=E:/work/01_x``,
+    ``E:/tools`` and ``E:/work/secrets`` stay denied.
+
+    The directory names along the chain stay listable, exactly as WORK_DIR's own
+    entries already are; it is the contents that are denied.
+    """
+    pats: list[str] = []
+    # rstrip first: a WORK_DIR at a drive root resolves to "D:/", and the empty
+    # trailing part would match no sibling and deny the whole drive — including
+    # WORK_DIR's own children, which is the bug this function exists to avoid.
+    parts = work.rstrip("/").split("/")
+    for depth in range(1, len(parts)):
+        parent = "/".join(parts[:depth])
+        keep = parts[depth].lower()
+        try:
+            names = os.listdir(parent + "/")
+        except Exception:
+            continue                        # unreadable level → nothing to deny
+        for name in names:
+            # Case-insensitive on every platform, deliberately. Getting this
+            # wrong in the other direction denies the corridor itself and takes
+            # every grant down with it; the cost of being lenient is at most one
+            # case-variant sibling on a case-sensitive filesystem. (Not
+            # os.path.normcase — on Windows it rewrites "/" to "\" too.)
+            if name.lower() == keep:
+                continue                    # the corridor down to WORK_DIR
+            sub = f"{parent}/{name}"
+            pats += _rw(f"{sub}/**" if os.path.isdir(sub) else sub)
+    return pats
+
+
+def _outside_work_denies(work: str) -> list[str]:
+    """Everything off the WORK_DIR corridor: blanket where that is safe, and
+    sibling-by-sibling on the one root WORK_DIR lives under."""
+    pats: list[str] = []
+    work_path = work.rstrip("/").lower() + "/"
+    for root in STATIC_ROOTS:
+        base = root[:-3] if root.endswith("/**") else root
+        if work_path.startswith(base.rstrip("/").lower() + "/"):
+            continue                        # this root contains WORK_DIR
+        pats += _rw(root)
+    return pats + _siblings_along(work)
+
+
 def _denies_for(manifest: str) -> list[str]:
     """Manifest text → deny pattern list (shared by guest and org tiers)."""
     work = str(Path(config.WORK_DIR).resolve()).replace("\\", "/")
@@ -96,9 +154,7 @@ def _denies_for(manifest: str) -> list[str]:
     # (deny beats allow; an org sees its own manifest via the prompt instead).
     orgs_glob = f"{work}/loki/orgs/**"
     pats += [f"Read({orgs_glob})", f"Grep({orgs_glob})", f"Glob({orgs_glob})"]
-    for root in ("C:/Users/**", "C:/ProgramData/**", "C:/Windows/**",
-                 "D:/**", "E:/**"):
-        pats += [f"Read({root})", f"Grep({root})", f"Glob({root})"]
+    pats += _outside_work_denies(work)
     # dynamic denies: everything under WORK_DIR the manifest didn't allow
     try:
         entries = os.listdir(work)

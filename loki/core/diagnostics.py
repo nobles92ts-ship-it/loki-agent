@@ -116,7 +116,15 @@ def doctor() -> int:
            f"{config.CLAUDE_CMD} → {ver}")
 
     if config.CLAUDE_OAUTH_TOKEN:
-        _check("account pin (CLAUDE_CODE_OAUTH_TOKEN)", *_probe_account_pin())
+        from . import account
+        if account.is_on():
+            _check("account pin (CLAUDE_CODE_OAUTH_TOKEN)", *_probe_account_pin())
+        else:
+            # Configured but switched off from chat. Probing it would report a
+            # healthy pin for an account nothing is running as.
+            _info(f"account pin: configured ({account.fingerprint()}) but "
+                  f"switched OFF — spawns use the login in "
+                  f"{account.status()['config_dir']}. `!account on` to restore.")
     elif config.CLAUDE_CONFIG_DIR:
         _info(f"account: config dir {config.CLAUDE_CONFIG_DIR} "
               "(follows that dir's login — see docs/SETUP.md to pin it)")

@@ -138,9 +138,40 @@ MSG: dict[str, dict[str, str]] = {
         "alias_not_found": "`!{name}`? No such alias — check `!alias list`.",
         "alias_badname": "Alias names: letters/digits/Korean/`-`/`_`, up to 32 chars.",
         "alias_reserved": "`{name}` is a built-in command — pick another name.",
+        "alias_shadowed": ("`!{name}` is already answered by *{owner}* — an alias "
+                           "with that name would save and never fire. Pick "
+                           "another name."),
+        "alias_list_dead": ("• ~`!{name}`~ — {prompt}\n"
+                            "   ⚠️ dead: *{owner}* answers `!{name}` first. "
+                            "Rename it (`!alias add <new> …`) to bring it back."),
         "alias_empty": "Give it a prompt: `!alias add <name> <prompt>`.",
         "alias_error": "⚠️ Couldn't write `loki/aliases.md` — check the logs.",
         "alias_fired": "⚡ `!{name}`\n",
+        "account_help": ("Account (owner):\n"
+                         "• `!account` — which account the next spawn runs as\n"
+                         "• `!account off` — ignore the pinned token and use the "
+                         "login in the config dir instead\n"
+                         "• `!account on` — go back to the pinned account\n"
+                         "The token in `.env` is never changed, so `on` always "
+                         "has something to go back to. Applies to the next "
+                         "request; running jobs finish under the old one."),
+        "account_unset": ("No account pinned — spawns already use the login in "
+                          "the config dir. Set `CLAUDE_CODE_OAUTH_TOKEN` in "
+                          "`.env` to pin one (see docs/SETUP.md)."),
+        "account_on": "on",
+        "account_off": "off",
+        "account_status_header": "🔑 Account pin — *{state}*",
+        "account_status_pin": "• pinned token: `{who}`",
+        "account_status_dir": "• config dir: `{dir}`",
+        "account_status_hint": "`!account off` / `!account on` to switch.",
+        "account_nochange": "Already *{state}* — nothing to change.",
+        "account_switched_on": ("🔑 Account pin *on* — the next request runs as the "
+                                "pinned account (`{who}`)."),
+        "account_switched_off": ("🔓 Account pin *off* — the next request runs as "
+                                 "whoever `{dir}` is logged in as. The token is "
+                                 "untouched; `!account on` brings it back."),
+        "account_sessions_cleared": ("↩️ {n} remembered conversation(s) dropped — "
+                                     "the new account starts fresh."),
         "budget_help": ("Budget (owner):\n"
                         "• `!budget` — current caps and usage\n"
                         "• `!budget daily <n>` · `!budget weekly <n>` (`0` = off)\n"
@@ -370,9 +401,39 @@ MSG: dict[str, dict[str, str]] = {
         "alias_not_found": "`!{name}`? 그런 별칭 없어 — `!alias list` 로 확인해줘.",
         "alias_badname": "별칭 이름은 영문/숫자/한글/`-`/`_` 32자까지야.",
         "alias_reserved": "`{name}` 은 기본 명령이라 못 써 — 다른 이름으로 해줘.",
+        "alias_shadowed": ("`!{name}` 은 이미 *{owner}* 가 받는 명령이야 — 별칭으로 "
+                           "만들면 저장은 되고 영영 안 뜬다. 다른 이름으로 해줘."),
+        "alias_list_dead": ("• ~`!{name}`~ — {prompt}\n"
+                            "   ⚠️ 안 뜸: `!{name}` 은 *{owner}* 가 먼저 받는다. "
+                            "다른 이름으로 다시 등록(`!alias add <새이름> …`)해야 살아나."),
         "alias_empty": "프롬프트도 줘: `!alias add <이름> <프롬프트>`.",
         "alias_error": "⚠️ `loki/aliases.md` 를 못 썼어 — 로그 확인해줘.",
         "alias_fired": "⚡ `!{name}`\n",
+        "account_help": ("계정 명령 (오너):\n"
+                         "• `!account` — 다음 요청이 어느 계정으로 도는지\n"
+                         "• `!account off` — 고정 토큰 무시하고 config dir 에 "
+                         "로그인된 계정으로\n"
+                         "• `!account on` — 다시 고정 계정으로\n"
+                         "`.env` 의 토큰은 건드리지 않으니 `on` 은 언제든 돌아올 곳이 "
+                         "있어. 다음 요청부터 적용되고, 돌고 있는 작업은 이전 계정으로 "
+                         "끝난다."),
+        "account_unset": ("고정된 계정이 없어 — 이미 config dir 의 로그인으로 돌고 있어. "
+                          "고정하려면 `.env` 에 `CLAUDE_CODE_OAUTH_TOKEN` 을 넣어줘 "
+                          "(docs/SETUP.md)."),
+        "account_on": "켜짐",
+        "account_off": "꺼짐",
+        "account_status_header": "🔑 계정 고정 — *{state}*",
+        "account_status_pin": "• 고정 토큰: `{who}`",
+        "account_status_dir": "• config dir: `{dir}`",
+        "account_status_hint": "`!account off` / `!account on` 으로 전환.",
+        "account_nochange": "이미 *{state}* 야 — 바꿀 게 없어.",
+        "account_switched_on": ("🔑 계정 고정 *켰어* — 다음 요청부터 고정 계정(`{who}`)"
+                                "으로 돈다."),
+        "account_switched_off": ("🔓 계정 고정 *껐어* — 다음 요청부터 `{dir}` 에 "
+                                 "로그인된 계정으로 돈다. 토큰은 그대로 있으니 "
+                                 "`!account on` 으로 언제든 되돌려."),
+        "account_sessions_cleared": ("↩️ 기억하던 대화 {n}개 정리했어 — 새 계정에서 "
+                                     "새로 시작해."),
         "budget_help": ("예산 명령 (오너):\n"
                         "• `!budget` — 현재 한도와 사용량\n"
                         "• `!budget daily <n>` · `!budget weekly <n>` (`0` = 해제)\n"

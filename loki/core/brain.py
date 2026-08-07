@@ -10,7 +10,7 @@ import os
 import signal
 import subprocess
 
-from . import config
+from . import account, config
 from .config import ANSI, log, t
 
 
@@ -74,9 +74,12 @@ def run_claude(prompt: str, resume_id: str | None,
         env["CLAUDE_CONFIG_DIR"] = config.CLAUDE_CONFIG_DIR
     # Account pin, stripped above then re-set so it wins over the parent env:
     # outranks the config dir's stored login, so the account stays fixed even if
-    # that login expires or gets re-pointed at someone else.
-    if config.CLAUDE_OAUTH_TOKEN:
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = config.CLAUDE_OAUTH_TOKEN
+    # that login expires or gets re-pointed at someone else. `!account off`
+    # returns an empty token here, and the spawn falls back to the config dir's
+    # own login — the switch for installs with two accounts to choose between.
+    pinned = account.token()
+    if pinned:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = pinned
     spawn_kw: dict = {}
     if os.name == "nt":
         spawn_kw["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
