@@ -99,7 +99,7 @@ claude            # run /login, pick the account Loki should use
 ```
 Then set `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki` in `.env` (the wizard also asks). Loki now authenticates as that account, no matter which account your terminal uses. Leave it blank to share your default login.
 
-That covers most setups, but not one: anything reading `~/.claude/skills` or `~/.claude/agents` at run time can't be moved to another config dir without taking its toolchain along. Pin the account with a **token** instead — `claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN` in `.env`. It outranks the stored login, so the config dir stays where it is and only the credential is replaced.
+That covers most setups, but not two cases. Anything reading `~/.claude/skills` or `~/.claude/agents` at run time can't be moved to another config dir without taking its toolchain along — and on **macOS** the config dir doesn't separate accounts at all, because credentials live in the system Keychain rather than in the directory. For either, pin the account with a **token** instead — `claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN` in `.env`. It outranks the stored login, so the config dir stays where it is and only the credential is replaced; being an environment variable, it behaves the same on every platform.
 
 Either way, **verify it rather than assume it**: an invalid or expired token doesn't raise — `claude` quietly falls back to the stored login and answers normally — so `python -m loki doctor` checks the pin against an *empty* config dir, where there's nothing to fall back to. Walkthrough: [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token).
 

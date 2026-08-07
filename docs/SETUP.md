@@ -89,7 +89,7 @@ claude                                                  # run /login → choose 
 # then in .env:  CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki
 ```
 
-Claude stores `.credentials.json` inside that dir (Windows/Linux), so it's a fully independent login. macOS uses the system Keychain and doesn't isolate per-dir — use a separate OS user there instead.
+Claude stores `.credentials.json` inside that dir (Windows/Linux), so it's a fully independent login. **macOS keeps credentials in the system Keychain and does not isolate them per directory**, so this route doesn't separate accounts there — pin the account with a token instead (next section). That one is an environment variable, so it behaves the same on every platform.
 
 ### Optional: pin the account with a token
 
