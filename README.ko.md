@@ -99,7 +99,7 @@ claude            # /login 실행 → Loki가 쓸 계정 선택
 ```
 그다음 `.env`에 `CLAUDE_CONFIG_DIR=C:\Users\You\.claude-loki`를 넣는다(마법사도 물어봄). 이제 터미널이 어떤 계정을 쓰든 Loki는 그 계정으로 인증한다. 비워두면 기본 로그인을 공유.
 
-대부분은 이걸로 되지만 한 경우가 안 된다. 실행 시점에 `~/.claude/skills`·`~/.claude/agents`를 읽는 파이프라인은 config 디렉토리를 옮기면 툴체인까지 딸려가 버린다. 그럴 땐 **토큰**으로 계정을 고정한다 — `claude setup-token`으로 발급해 `.env`에 `CLAUDE_CODE_OAUTH_TOKEN`을 넣으면 된다. 저장된 로그인보다 우선순위가 높아서, config 디렉토리는 그대로 두고 **자격증명만** 대체한다.
+대부분은 이걸로 되지만 두 경우가 안 된다. 실행 시점에 `~/.claude/skills`·`~/.claude/agents`를 읽는 파이프라인은 config 디렉토리를 옮기면 툴체인까지 딸려가 버린다. 그리고 **macOS**에서는 자격증명이 디렉토리가 아니라 시스템 키체인에 저장돼서 config 디렉토리로는 계정이 아예 안 나뉜다. 둘 다 **토큰**으로 해결한다 — `claude setup-token`으로 발급해 `.env`에 `CLAUDE_CODE_OAUTH_TOKEN`을 넣으면 된다. 저장된 로그인보다 우선순위가 높아서 config 디렉토리는 그대로 두고 **자격증명만** 대체하고, 환경변수라 플랫폼을 가리지 않는다.
 
 어느 쪽이든 **가정하지 말고 확인해라**. 토큰이 잘못됐거나 만료돼도 오류가 나지 않는다 — `claude`가 저장된 로그인으로 조용히 폴백해 정상 응답한다. 그래서 `python -m loki doctor`는 **빈** config 디렉토리에 대고 검사한다. 폴백할 대상이 없어야 토큰이 혼자 서는지 알 수 있기 때문이다. 절차: [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token)
 
