@@ -1,5 +1,32 @@
 # Changelog
 
+## [v1.8.0] 2026-08-07
+
+One account, whoever is logged in — and a guest fence that actually holds.
+
+### What you can do now
+
+- **Pin Loki to one Claude account.** Mint a token with `claude setup-token`, put it in `.env` as `CLAUDE_CODE_OAUTH_TOKEN`, restart. Every spawn authenticates as that account even when your terminal is logged into a different one. Your desktop and your bot no longer have to share a login. → [docs/SETUP.md](docs/SETUP.md#optional-pin-the-account-with-a-token)
+- **Check that the pin is real**, not just configured — `python -m loki doctor` now reports it as its own line.
+- **Grant guests folders and have the grant mean something.** An empty allowlist now means an empty scope. Before, one folder was readable no matter what the manifest said.
+
+### Changes
+
+#### Features
+
+- **Account pin (`CLAUDE_CODE_OAUTH_TOKEN`)** — a subscription OAuth token outranks the stored `/login` credential, so it fixes the account for every spawn. It solves what `CLAUDE_CONFIG_DIR` can't: a pipeline that must keep the **default** `~/.claude` (anything reading `~/.claude/skills` or `~/.claude/agents` at run time) can't be moved to a private config dir without taking its toolchain along. The token leaves the config dir alone and replaces only the credential. Optional — unset, nothing changes.
+- **`doctor` verifies the pin against an empty config dir.** This detail is the whole feature. An invalid or expired token does **not** raise: `claude` quietly falls back to the stored login and answers normally, so a check run against the real config dir passes no matter what, and the pin looks healthy while the bot runs as whoever the machine happens to be. An empty dir removes the fallback, so the token has to stand on its own. Tokens last a year and do not auto-refresh, which is exactly when that silent fallback would otherwise start.
+
+#### Security
+
+- **Guests could read the worker's own tree.** `scope` built its deny list by subtracting from `WORK_DIR`, and exempted the `loki` folder outright so `loki.md` stayed readable. If your worker lives inside that folder — `<WORK_DIR>/loki/loki-agent`, the layout `setup` produces — then its source, `state/`, and `.env` all sat under the one folder the subtraction skipped, and **an empty `## Allowed paths` did not prevent it**. The `orgs/**` deny was the scar from the first time this happened; the registry then leaked again through its generated copy in `state/`. The exemption is gone — the manifest is handed to guests in the prompt, so nothing needs to read it off disk. **If guests can reach your bot, upgrade.**
+- **Guest and org runs now carry `guard.deny_patterns()`.** The read-deny on `.env` and the credential files existed but was wired only to the owner path. Applied last, so no folder exemption can undo it.
+
+#### Docs
+
+- `docs/SETUP.md` — pinning walkthrough, the paste-the-code-back step that `setup-token` needs a real terminal for, the empty-config-dir verification, and three troubleshooting rows for the ways it fails quietly.
+- `.env.example` — the new key, with the `sk-ant-oat01-` shape and the silent-fallback warning.
+
 ## [v1.7.0] 2026-07-30
 
 Telegram, files that go both ways, and spending you control.

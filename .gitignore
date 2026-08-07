@@ -13,6 +13,10 @@ __pycache__/
 # private, workspace-specific commands (keep your real ones out of the repo)
 loki/platforms/slack/private_commands.py
 
+# workspace-private material — company docs, Slack app manifests, ops tooling.
+# never publish: contains internal names and app identifiers.
+private/
+
 # your own plugins — yours, and they survive pulling upstream updates.
 # *.py.example is tracked so the shipped example still ships.
 plugins/*.py

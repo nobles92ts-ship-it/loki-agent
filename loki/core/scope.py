@@ -16,7 +16,7 @@ import os
 import re
 from pathlib import Path
 
-from . import config
+from . import config, guard
 
 _CLAUDE_HOME_GLOB = os.path.expanduser("~/.claude").replace("\\", "/") + "/**"
 _PATH_LINE_RE = re.compile(
@@ -68,7 +68,16 @@ def ensure_manifest() -> None:
 def _denies_for(manifest: str) -> list[str]:
     """Manifest text → deny pattern list (shared by guest and org tiers)."""
     work = str(Path(config.WORK_DIR).resolve()).replace("\\", "/")
-    allowed = {"loki"}                        # the manifest folder is always visible
+    # No standing exemption. The manifest folder used to sit here so a guest
+    # could read loki.md — but the manifest is handed over in the prompt
+    # (adapter: guest_scope_note), so nothing needs to read it off disk. The
+    # exemption was a blanket grant on a whole top-level folder, and this
+    # deployment keeps the worker's own tree inside it (WORK_DIR/loki/
+    # loki-agent) — source, state/, private/ and .env all rode in on it. The
+    # orgs/** deny below is the scar from the first time that happened; the
+    # registry then leaked again through its generated copy in state/. Grant
+    # folders through the manifest instead, where the tier system can see them.
+    allowed: set[str] = set()
     for m in _PATH_LINE_RE.finditer(manifest):
         p = m.group(1).replace("\\", "/").rstrip("/")
         try:
@@ -101,6 +110,14 @@ def _denies_for(manifest: str) -> list[str]:
         glob = (f"{work}/{name}/**" if os.path.isdir(os.path.join(work, name))
                 else f"{work}/{name}")
         pats += [f"Read({glob})", f"Grep({glob})", f"Glob({glob})"]
+
+    # Secret files, denied last so no folder exemption above can undo them. The
+    # `loki` folder is exempt on purpose (loki.md has to stay readable), but the
+    # worker's own tree can live *inside* it — WORK_DIR/loki/loki-agent/.env —
+    # in which case the dynamic loop never emits a deny covering it and a guest
+    # could just read the tokens. guard.deny_patterns() is the same list the
+    # owner path already gets via guard.settings_file(); guests never got it.
+    pats += guard.deny_patterns()
     return pats
 
 

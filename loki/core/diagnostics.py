@@ -3,8 +3,9 @@
 Answers two different questions, deliberately kept apart:
 
 - **doctor** — *is this install correct?* config, credentials, the claude CLI.
-  Safe to run any time; it makes one identity call, never a gateway connection,
-  so a running worker is unaffected.
+  Safe to run any time; it makes one identity call (plus one tiny `claude`
+  call when an account-pin token is set), never a gateway connection, so a
+  running worker is unaffected.
 - **status** — *is the worker up right now?* purely the heartbeat
   (:mod:`loki.core.health`), no network at all.
 """
@@ -12,6 +13,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import tempfile
 
 from . import config, health
 
@@ -60,6 +63,40 @@ def status() -> int:
     return 1
 
 
+def _probe_account_pin() -> tuple[bool, str]:
+    """Does CLAUDE_CODE_OAUTH_TOKEN actually authenticate?
+
+    Probed against an EMPTY config dir on purpose. With a stored login present,
+    `claude` answers normally even when the token is invalid — it falls back to
+    that login without erroring — so probing the real config dir would pass no
+    matter what, and the pin would look healthy while Loki quietly ran as
+    whoever the machine happens to be logged in as. An empty dir removes the
+    fallback, so the token has to stand on its own. Tokens expire after a year,
+    which is exactly when this silent fallback would otherwise kick in.
+    """
+    tok = config.CLAUDE_OAUTH_TOKEN
+    if not tok.startswith("sk-ant-oat"):
+        return False, "not a setup-token — paste the token, not the browser's code"
+    env = {k: v for k, v in os.environ.items()
+           if not (k.startswith("CLAUDE_CODE") or k == "CLAUDECODE"
+                   or k.startswith("ANTHROPIC_") or k == "CLAUDE_CONFIG_DIR")}
+    env["PYTHONUTF8"] = "1"
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
+    try:
+        with tempfile.TemporaryDirectory(prefix="loki-authprobe-") as empty:
+            env["CLAUDE_CONFIG_DIR"] = empty
+            r = subprocess.run([config.CLAUDE_CMD, "-p", "Reply with exactly: PONG"],
+                               env=env, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=120,
+                               creationflags=config.NO_WINDOW)
+    except Exception as e:                     # missing exe, timeout, temp dir
+        return False, f"probe failed: {type(e).__name__}"
+    if r.returncode == 0:
+        return True, "authenticates on its own — no silent fallback"
+    tail = [l for l in ((r.stdout or "") + " " + (r.stderr or "")).splitlines() if l.strip()]
+    return False, (tail[-1].strip()[:90] if tail else f"rc={r.returncode}")
+
+
 # ─────────────────────────── doctor ───────────────────────────
 def doctor() -> int:
     """Full install check + liveness. Exit 0 = all good."""
@@ -77,6 +114,12 @@ def doctor() -> int:
     ver = brain.claude_version()
     _check("claude CLI reachable", ver not in ("", "?"),
            f"{config.CLAUDE_CMD} → {ver}")
+
+    if config.CLAUDE_OAUTH_TOKEN:
+        _check("account pin (CLAUDE_CODE_OAUTH_TOKEN)", *_probe_account_pin())
+    elif config.CLAUDE_CONFIG_DIR:
+        _info(f"account: config dir {config.CLAUDE_CONFIG_DIR} "
+              "(follows that dir's login — see docs/SETUP.md to pin it)")
 
     _check_discord() if platform == "discord" else _check_slack()
 

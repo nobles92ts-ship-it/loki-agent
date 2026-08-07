@@ -91,6 +91,34 @@ claude                                                  # run /login → choose 
 
 Claude stores `.credentials.json` inside that dir (Windows/Linux), so it's a fully independent login. macOS uses the system Keychain and doesn't isolate per-dir — use a separate OS user there instead.
 
+### Optional: pin the account with a token
+
+The config dir above has two gaps. It can't help a pipeline that must keep the **default** `~/.claude` (anything reading `~/.claude/skills` or `~/.claude/agents` at run time — redirecting the config dir takes that toolchain with it). And if that dir's login expires or gets re-pointed, Loki quietly follows it.
+
+A subscription OAuth token outranks the stored login, so it pins the account for **every** spawn while leaving the config dir alone:
+
+1. Log your terminal into the account you want to pin (`claude` → `/login`).
+2. Run `claude setup-token` **in a real terminal window** — not through a wrapper, IDE prompt, or any non-interactive shell. It needs a TTY for step 4.
+3. Approve in the browser. **Check the account shown on the consent screen** — if the browser is signed in as someone else, you'll mint a token for the wrong account.
+4. The browser shows an **authorization code**. That is *not* the token — paste it **back into the terminal** and press Enter.
+5. The terminal now prints the token, starting with `sk-ant-oat01-`. Put it in `.env`:
+   ```
+   CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+   ```
+6. Restart Loki (`.env` is read at startup).
+
+**It fails silently.** If the token is invalid or expired, `claude` does *not* error while a stored login exists — it quietly uses that login instead, so Loki keeps working on the wrong account. Verify against an empty config dir, which removes anything to fall back to:
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = "$env:TEMP\claude-authtest"   # empty dir = no stored login
+$env:CLAUDE_CODE_OAUTH_TOKEN = Read-Host "paste the sk-ant-oat01-... token"
+claude -p "Reply with exactly: PONG"
+```
+
+`PONG` = the token authenticates. `401` = it doesn't (a code pasted in place of the token gives `401 Invalid bearer token`). `Not logged in` = the variable never reached `claude`. Close the window afterwards so the test vars don't leak into later commands.
+
+The token expires after **one year** and does not auto-refresh — repeat this when it lapses.
+
 **Finding your Slack member ID:** your Slack profile → **⋯ (More)** → **Copy member ID** (`U…`).
 
 Prefer manual setup? Copy `.env.example` → `.env` and fill it in, then:
@@ -219,6 +247,9 @@ Optional: `- rate: 20` under `## Settings` for a per-org hourly cap, `!org allow
 | Can't type in the bot's DM | App Home toggle unchecked | Step 1-5 above, then reload Slack (Ctrl+R) |
 | `invalid_auth` in diagnostics | wrong/revoked token, or token from another app | re-copy `xoxb-`/`xapp-` from *this* app |
 | `Could not find the claude executable` | `claude` not on PATH for the worker | set `CLAUDE_CMD=` full path in `.env` |
+| `claude setup-token` approved but printed nothing | run without a TTY (wrapper / IDE prompt / non-interactive shell), so it can't take the paste-back | re-run it in a real terminal window |
+| Token in `.env` doesn't start with `sk-ant-oat01-` | the browser's **authorization code** was copied instead of the token | paste that code back into the terminal — the terminal prints the real token |
+| Loki runs as the wrong account despite `CLAUDE_CODE_OAUTH_TOKEN` | invalid/expired token — `claude` falls back to the stored login **without erroring** | verify with the empty-config-dir check in [Optional: pin the account with a token](#optional-pin-the-account-with-a-token) |
 | Boot exits with `Missing required setting: …` | `.env` incomplete | fill the key it names (fail-closed by design) |
 | Channel mention does nothing | bot not in the channel, or scopes changed without reinstall | `/invite @Loki`; after any manifest scope change: **api.slack.com → your app → Install App → Reinstall** |
 | Image analysis / file upload does nothing | `files:read` / `files:write` scopes missing (upgraded from an older version) | **api.slack.com → your app → Install App → Reinstall** to grant the new scopes |

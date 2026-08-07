@@ -558,6 +558,13 @@ SELFTEST_ON_BOOT = os.environ.get("SELFTEST_ON_BOOT", "1") == "1"
 # use the default (~/.claude) account. See docs/SETUP.md.
 CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
 
+# Same goal, stronger lever: a subscription OAuth token (`claude setup-token`)
+# outranks the stored /login credential, so every spawn authenticates as this
+# account even when the machine's terminal login is a different one — and even
+# on paths that must keep the default ~/.claude config dir (tc-team's toolchain
+# lives there). Empty = use whatever account the config dir holds.
+CLAUDE_OAUTH_TOKEN = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+
 # Guest throttle: max requests per rolling hour per non-owner user (protects
 # your subscription limits). 0 = unlimited. Owners are never throttled.
 GUEST_RATE_PER_HOUR = max(0, int(os.environ.get("GUEST_RATE_PER_HOUR", "10")))
