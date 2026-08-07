@@ -24,7 +24,19 @@ def test_fail_closed_empty_manifest(tmp_path, monkeypatch):
         assert tool in denies
     assert any("secret/**" in d for d in denies)
     assert any("shared/**" in d for d in denies)          # nothing shared yet
-    assert not any("/loki/**" in d for d in denies)       # manifest folder visible
+    # The manifest folder is denied like everything else. It used to be exempt
+    # so loki.md stayed readable, but the manifest reaches guests through the
+    # prompt — and the worker's own tree can live inside that folder, which is
+    # how its source, state/ and .env became readable on an empty allowlist.
+    assert any("/loki/**" in d for d in denies)
+
+
+def test_secret_files_denied_for_guests(tmp_path, monkeypatch):
+    """The read-deny on .env and the credential files existed but was wired to
+    the owner path only, so no folder exemption could ever be trusted."""
+    _setup(tmp_path, monkeypatch)
+    denies, _ = scope.guest_scope()
+    assert any(d.startswith("Read(") and d.endswith(".env)") for d in denies)
 
 
 def test_allowlisted_folder_not_denied(tmp_path, monkeypatch):
