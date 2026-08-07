@@ -108,22 +108,22 @@ def test_roots_without_workdir_stay_blanket_denied(tmp_path, monkeypatch):
     assert covered(denies, "D:/anything")
 
 
-def test_workdir_at_a_drive_root_denies_nothing_of_its_own(tmp_path, monkeypatch):
-    """`Path("D:/").resolve()` keeps the trailing slash, and the empty trailing
-    part would match no sibling — denying every child of WORK_DIR itself."""
+def test_trailing_separator_does_not_deny_workdirs_own_children(tmp_path):
+    """A WORK_DIR at a drive root keeps its trailing slash — `Path("D:/")`
+    resolves to `D:/`, not `D:`. Splitting that leaves an empty last part, which
+    matches no sibling, so every child of WORK_DIR would be denied as one — the
+    exact failure this function exists to prevent, one level down.
+
+    Called directly: `resolve()` strips a trailing separator on any path that
+    isn't a root, so only the function itself can be shown the shape.
+    """
     work = tmp_path / "root"
     (work / "shared").mkdir(parents=True)
-    state = tmp_path / "state"
-    state.mkdir()
-    monkeypatch.setattr(config, "WORK_DIR", str(work) + "\\")
-    monkeypatch.setattr(config, "STATE", state)
-    monkeypatch.setattr(scope, "STATIC_ROOTS", ())
-    scope.ensure_manifest()
-    scope.manifest_file().write_text(
-        f"## Allowed paths\n- {work / 'shared'}\n", encoding="utf-8")
+    (work / "secret").mkdir()
 
-    denies, _ = scope.guest_scope()
+    denies = scope._siblings_along(str(work).replace("\\", "/") + "/")
     assert not covered(denies, work / "shared")
+    assert not covered(denies, work / "secret")     # WORK_DIR's own, not siblings
 
 
 def test_write_guest_settings(tmp_path, monkeypatch):
