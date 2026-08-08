@@ -1,5 +1,27 @@
 # Changelog
 
+## [v1.8.2] 2026-08-08
+
+Commands sent through a connector reach the command layer.
+
+### What you can do now
+
+- **Drive Loki from another machine's Claude session.** Have a Claude session on your laptop post into a Slack channel or Loki's DM, and the worker on your desktop does the work and answers in the thread — the same subscription, the same permissions, no second Slack app. Until now this worked for plain requests but **every `!` command broke**, which made it look like the setup itself was wrong.
+
+### Changes
+
+#### Fixes
+
+- **Slack's "Sent via \<app\>" credit was reaching the command parser.** When someone posts *through an app* rather than typing in Slack — a Claude session driving Slack via a connector is the common case — Slack appends a credit line. It is invisible in the client, but it is concatenated into the event's `text`:
+
+  ```
+  !usage *Sent via* <@U0AFK1Q8S4W>
+  ```
+
+  Every anchored command regex then misses. `!usage`, `!jobs`, `!new`, `!listen` and `!summary` fell through to the brain as ordinary chat — Claude would answer "`!usage` isn't a command I recognize", which is true and completely unhelpful. `!account`, `!alias` and every alias matched but took the credit line as their arguments.
+
+  Fixed by reading Slack's own structure rather than matching the words: the credit is its own trailing `context` block while the author's text stays in `rich_text`. **The credit is localized** (`다음을 사용하여 보냄`, `Sent via`, `経由で送信`, …), so any pattern built from its wording is one workspace language away from breaking. A person typing in Slack cannot produce a `context` block at all — the composer only emits `rich_text` — so a trailing one is always Slack's, never theirs. Applied to inbound commands and to thread/channel context alike, so quoted history stops carrying the credits too.
+
 ## [v1.8.1] 2026-08-08
 
 Three failures that reported themselves as nothing at all — and a switch for the account pin.

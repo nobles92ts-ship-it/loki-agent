@@ -59,6 +59,39 @@ def _strip_mention(text: str) -> str:
     return _MENTION_RE.sub("", text or "").strip()
 
 
+def message_text(event: dict) -> str:
+    """What the author actually wrote, without Slack's own attribution line.
+
+    When someone posts *through an app* — a Claude session driving Slack via a
+    connector, say — Slack appends a "Sent via <app>" credit. It is invisible in
+    the client, but it is concatenated into `text`, so what reaches us is::
+
+        !usage *Sent via* <@U0AFK1Q8S4W>
+
+    That is not what the author typed, and every anchored command regex misses
+    it: `!usage` falls through to the brain as ordinary chat, and `!alias` and
+    the aliases take the credit line as their arguments. Anyone who reaches Loki
+    from another machine through a connector hits this on their first command.
+
+    Slack itself already separates the two — the credit is its own trailing
+    `context` block, while the author's words stay in `rich_text`. Reading that
+    structure beats matching the words: the credit is localized (`다음을 사용하여
+    보냄`, `Sent via`, …), so any pattern built from them is one workspace
+    language away from being wrong. And a person typing in Slack cannot produce
+    a `context` block at all — the composer only emits `rich_text` — so a
+    trailing one is Slack's, never theirs.
+    """
+    text = (event.get("text") or "")
+    for block in reversed(event.get("blocks") or []):
+        if block.get("type") != "context":
+            break                       # past the trailing credits — stop
+        for element in block.get("elements") or []:
+            tail = (element.get("text") or "").strip()
+            if tail and text.rstrip().endswith(tail):
+                text = text.rstrip()[:-len(tail)]
+    return text.strip()
+
+
 def _session_key(channel: str, thread_ts: str | None) -> str | None:
     """Conversation key for --resume continuity (see core.sessions.key_for).
     `D…` = DM, straight from Slack's channel ids."""
@@ -107,7 +140,7 @@ def _thread_context(channel: str, thread_ts: str) -> str:
     lines = []
     for m in msgs:
         who = _user_name(m.get("user")) or m.get("bot_id") or "?"
-        line = _strip_mention((m.get("text") or "").strip())
+        line = _strip_mention(message_text(m))
         if line:
             lines.append(f"[{who}] {line}")
     return "\n".join(lines)[:8000]   # cap so the prompt stays bounded
@@ -140,7 +173,7 @@ def _channel_context(channel: str) -> str:
         if m.get("subtype"):                      # joins/topic changes etc.
             continue
         who = _user_name(m.get("user")) or ("bot" if m.get("bot_id") else "?")
-        line = _strip_mention((m.get("text") or "").strip())
+        line = _strip_mention(message_text(m))
         if line:
             ts = time.strftime("%m-%d %H:%M", time.localtime(float(m.get("ts", "0"))))
             lines.append(f"[{ts} {who}] {line[:400]}")
@@ -586,8 +619,8 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False,
         # Many bots leave `text` empty and put everything in attachments.
         text = botallow.message_text(event)
     else:
-        text = (_strip_mention(event.get("text") or "") if is_mention
-                else (event.get("text") or "").strip())
+        raw = message_text(event)
+        text = _strip_mention(raw) if is_mention else raw
 
     # Attachments (owner only): classified here, downloaded in the worker.
     # Deny-by-default — executables and archives never leave Slack.

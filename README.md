@@ -341,6 +341,18 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 
 → Full worked example + code sketch: **[docs/EXAMPLES.md](docs/EXAMPLES.md)**
 
+### Reaching your desktop from another machine's Claude session
+
+A Claude session on your laptop can't touch files on your desktop. Give it a Slack connector and it doesn't have to — Slack becomes the mailbox:
+
+```
+laptop Claude session  ──①post as you──▶  Slack  ──②socket──▶  desktop Loki
+                                                                    │ ③ claude -p
+       laptop reads the reply  ◀──────── thread reply ◀─────────────┘
+```
+
+Nothing to install and no second Slack app: the message arrives from **your own account**, so it lands on the owner path with full permissions. The desktop side is a fresh `claude -p` per request — continuity comes from the Slack thread, which keeps its own session. Ask the laptop session to check the thread again if the job takes a while.
+
 ## Security model
 
 - **Read-only by default.** Every Claude call is forced to `--permission-mode plan` unless you opt in. A boot self-test verifies plan mode cannot write — if that guarantee ever breaks, Loki refuses to start.
@@ -379,6 +391,7 @@ That's the whole pitch: **install any Claude Code skill — yours or the communi
 | v1.7 | ✅ document attachments + `!send` · prompt aliases (`!alias`) · schedules to a channel · usage budgets (`!budget`) · bot triggers (`!bot`) · **Telegram adapter** · Docker/NAS |
 | v1.8 | ✅ **account pin** (`CLAUDE_CODE_OAUTH_TOKEN` — one account whoever the terminal is logged in as, verified against an empty config dir) · **guest scope fix** (the worker's own tree is no longer readable on an empty allowlist) |
 | v1.8.1 | ✅ **`!account on/off`** (switch which of two accounts spends, no restart) · Slack history returned nothing on a 7-decimal `oldest` · a WORK_DIR off `C:` shared nothing · `!alias` accepted names no call could reach |
+| v1.8.2 | ✅ Slack's "Sent via \<app\>" credit reached the command parser, so every `!` command missed — anyone driving Loki through a connector hit it on their first command |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 
