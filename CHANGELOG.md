@@ -1,5 +1,27 @@
 # Changelog
 
+## [v1.8.3] 2026-08-09
+
+A stop button for the one conversation nobody was ending.
+
+### What you can do now
+
+- **`!exit`** — end a bot-to-bot exchange in this thread. Other bots stop being heard and any bot work still running here is cancelled, while **people carry on untouched**. `!exit undo` reopens it, `!exit list` shows where you've used it.
+
+### Changes
+
+#### Features
+
+- **`!exit` / `!종료`** — Two Lokis can talk to each other (an allowlisted bot waking another inside an auto-listen zone), and it is the one path where nobody decides when to stop: neither side gets bored, and an exchange that has stopped being productive keeps spending both subscriptions. Every existing off-switch was the wrong size for that — `!stop` cancels what is running and the next bot message wakes Loki again, `!block` shuts out people too, `!unlisten` sends humans back to @mentioning, and `!new` only clears the conversation's memory. This is the missing one, scoped like `!listen` (a thread, or the whole channel at top level) and persisted across restarts.
+
+  **Human-only by construction.** Bot messages never reach the command layer, so the other Loki can neither mute yours nor talk yours out of staying quiet. And because one side going quiet leaves nothing to wake the other, `!exit` on either end is enough to end the exchange.
+
+- **`jobs.snapshot()` now carries `channel` and `thread`**, so a caller can act on "the work in here". `!exit` uses it to cancel bot-triggered jobs in this thread only — the owner's own request in the same thread survives.
+
+#### Docs
+
+- README (en/ko): a "two Lokis talking" section — allowlist **in one direction only** (the self-trigger guard stops A↔A, not A↔B↔A), scope the other install with its own org and `rate:`, and why there is no progress detector: separating "a new question about the same topic" from "the same deadlock restated" is a semantic judgement, and word-overlap heuristics measured against real transcripts could not do it. Bound it with things that need to understand nothing — rate, budget, and `!exit`.
+
 ## [v1.8.2] 2026-08-08
 
 Commands sent through a connector reach the command layer.

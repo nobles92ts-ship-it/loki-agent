@@ -16,7 +16,7 @@ import urllib.request
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ...core import (alias, autolisten, blocked, botallow, brain, budget,
+from ...core import (alias, autolisten, blocked, botallow, botmute, brain, budget,
                      commands, config, dedup, files, guard, health, jobs,
                      mrkdwn, orgs, ratelimit, scheduler, scope, selftest,
                      sessions, usage)
@@ -553,6 +553,8 @@ def on_message(body, event, logger):
         if not in_zone:
             return
         botallow.observe(event)               # so `!bot seen` can offer its id
+        if botmute.is_muted(channel, event.get("thread_ts")):
+            return                            # `!exit` here — people still heard
         if botallow.is_allowed(event, {BOT_USER_ID, BOT_ID}):
             _dispatch(body, event, is_mention=False, auto_listen=True,
                       from_bot=True)

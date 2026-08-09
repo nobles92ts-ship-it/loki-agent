@@ -147,6 +147,25 @@ MSG: dict[str, dict[str, str]] = {
         "alias_empty": "Give it a prompt: `!alias add <name> <prompt>`.",
         "alias_error": "⚠️ Couldn't write `loki/aliases.md` — check the logs.",
         "alias_fired": "⚡ `!{name}`\n",
+        "exit_help": ("End a bot exchange (owner):\n"
+                      "• `!exit` — stop hearing *other bots* here (this thread, "
+                      "or the whole channel at top level). People are "
+                      "unaffected — no need to @mention again.\n"
+                      "• `!exit undo` — let bots back in\n"
+                      "• `!exit list` — where bots are currently muted\n"
+                      "Bot work already running here is cancelled too. This is "
+                      "not `!block` (which shuts out people too) or `!new` "
+                      "(which only clears the conversation's memory)."),
+        "exit_thread": ("🔇 Bots are done in this thread. You and everyone else "
+                        "carry on as before."),
+        "exit_channel": ("🔇 Bots are done in this channel. People are "
+                         "unaffected — `!exit undo` to let them back in."),
+        "exit_already": "Already muted for bots here.",
+        "exit_cancelled": "↩️ Cancelled {n} bot request(s) that were still running.",
+        "exit_undo_ok": "🔊 Bots can reach me here again.",
+        "exit_undo_none": "Bots were never muted here.",
+        "exit_list_header": "🔇 Bots muted in {c} channel(s), {t} thread(s):",
+        "exit_list_none": "Bots aren't muted anywhere.",
         "account_help": ("Account (owner):\n"
                          "• `!account` — which account the next spawn runs as\n"
                          "• `!account off` — ignore the pinned token and use the "
@@ -409,6 +428,23 @@ MSG: dict[str, dict[str, str]] = {
         "alias_empty": "프롬프트도 줘: `!alias add <이름> <프롬프트>`.",
         "alias_error": "⚠️ `loki/aliases.md` 를 못 썼어 — 로그 확인해줘.",
         "alias_fired": "⚡ `!{name}`\n",
+        "exit_help": ("봇 대화 종료 (오너):\n"
+                      "• `!exit` — 여기서 *다른 봇* 그만 듣기 (스레드면 그 스레드, "
+                      "채널 최상위면 채널 전체). **사람은 그대로** — 다시 멘션할 "
+                      "필요 없어.\n"
+                      "• `!exit undo` — 봇 다시 받기\n"
+                      "• `!exit list` — 지금 어디가 막혀 있는지\n"
+                      "여기서 돌고 있던 봇 작업도 같이 취소한다. `!block`(사람까지 "
+                      "차단)이나 `!new`(대화 기억만 초기화)와는 다르다."),
+        "exit_thread": "🔇 이 스레드에서 봇 대화 끝냈어. 사람은 하던 대로 계속하면 돼.",
+        "exit_channel": ("🔇 이 채널에서 봇 대화 끝냈어. 사람은 그대로고, "
+                         "`!exit undo` 로 다시 받을 수 있어."),
+        "exit_already": "여긴 이미 봇 막혀 있어.",
+        "exit_cancelled": "↩️ 돌고 있던 봇 요청 {n}건도 같이 취소했어.",
+        "exit_undo_ok": "🔊 여기서 봇 다시 받을게.",
+        "exit_undo_none": "여긴 봇을 막은 적 없어.",
+        "exit_list_header": "🔇 봇 차단 중 — 채널 {c}개, 스레드 {t}개:",
+        "exit_list_none": "봇을 막아둔 곳이 없어.",
         "account_help": ("계정 명령 (오너):\n"
                          "• `!account` — 다음 요청이 어느 계정으로 도는지\n"
                          "• `!account off` — 고정 토큰 무시하고 config dir 에 "
