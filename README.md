@@ -167,11 +167,12 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!plugins` | anywhere | list your own installed commands — see [docs/PLUGINS.md](docs/PLUGINS.md) |
 | `!alias …` | anywhere | manage [prompt aliases](#aliases--your-own-commands-without-code): `list` `add <name> <prompt>` `remove <name>` |
 | `!budget …` | DM | [usage budgets](#budgets--caps-that-protect-your-subscription): caps, mode, and mitigations |
+| `!exit` | thread / channel | end a **bot-to-bot** exchange here — other bots stop being heard, people carry on untouched. `undo` to reverse, `list` to see where. See [two Lokis](#two-lokis-talking) |
 | `!account [on\|off]` | DM | which Claude account spawns run as — the pinned token, or the config dir's own login. See [two accounts](#two-accounts--switching-which-one-spends) |
 | `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크` · `계정`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크` · `계정` · `종료`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 
@@ -240,6 +241,25 @@ Now a failed build lands and Loki reads it. Two opt-ins are required — the zon
 - `!block` still wins, and bots outside a zone stay ignored.
 
 Bot output is untrusted text — a CI job prints whatever a branch name says — so it goes through the same injection guard as any other context, under the guest fence.
+
+#### Two Lokis talking
+
+A CI bot is one thing; **another Loki** is the interesting one. Someone else's install is a different Slack app with a different bot id, so the self-trigger guard doesn't apply to it — allowlist it and the two can hold a conversation in a shared channel. Everything above still holds: the woken side is a read-only guest, scoped to what its org may read, and it cannot issue commands.
+
+**Allowlist in one direction only.** The self-guard stops a Loki triggering *itself*; it does nothing about A waking B waking A. Mutual allowlisting is an unbounded loop, on two subscriptions, and neither side gets bored. One direction is enough for every useful pattern — one side produces, the other reacts — and the exchange ends naturally when the producer stops.
+
+There is no progress detector, and don't expect one soon: distinguishing "asking a new question about the same topic" from "restating the same deadlock" is a semantic judgement, and word-overlap heuristics measured on real transcripts couldn't separate the two. Bound it with things that don't need to understand anything:
+
+```
+!org create wife-loki                # its own tier
+!org add wife-loki B0OTHERLOKI       # the other bot's id — a member like any other
+# in wife-loki.md →  ## Settings
+#                   - rate: 3        # 3 exchanges an hour, and no more
+!budget daily 40                     # a hard floor under the whole thing
+!exit                                # and this ends one, here, now
+```
+
+`!exit` is the stop button: bots stop being heard in this thread, in-flight bot work is cancelled, and **people are unaffected** — no going back to @mentions. `!exit undo` reopens it, `!exit list` shows where you've used it. It is human-only by construction, since bots never reach the command layer, so the other Loki can neither mute yours nor talk yours out of staying quiet.
 
 ### Checklists
 
@@ -392,6 +412,7 @@ Nothing to install and no second Slack app: the message arrives from **your own 
 | v1.8 | ✅ **account pin** (`CLAUDE_CODE_OAUTH_TOKEN` — one account whoever the terminal is logged in as, verified against an empty config dir) · **guest scope fix** (the worker's own tree is no longer readable on an empty allowlist) |
 | v1.8.1 | ✅ **`!account on/off`** (switch which of two accounts spends, no restart) · Slack history returned nothing on a 7-decimal `oldest` · a WORK_DIR off `C:` shared nothing · `!alias` accepted names no call could reach |
 | v1.8.2 | ✅ Slack's "Sent via \<app\>" credit reached the command parser, so every `!` command missed — anyone driving Loki through a connector hit it on their first command |
+| v1.8.3 | ✅ **`!exit`** — end a bot-to-bot exchange here (bots muted, in-flight bot work cancelled, people untouched) |
 | v2.x | **Home Assistant** |
 | v3.x | **Signal** (signal-cli) · **WhatsApp** (Business API) |
 

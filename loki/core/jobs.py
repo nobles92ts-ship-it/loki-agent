@@ -44,8 +44,11 @@ def snapshot() -> list[dict]:
     with _reg_lock:
         items = [j for j in _registry.values() if j.get("status") != "cancelled"]
         items.sort(key=lambda j: j.get("enqueued", 0))
+        # channel/thread ride along so a caller can act on "the jobs in here"
+        # — `!exit` cuts the bot exchange in one thread and nothing else.
         return [{k: j.get(k) for k in
-                 ("id", "status", "kind", "user", "started", "text")}
+                 ("id", "status", "kind", "user", "started", "text",
+                  "channel", "thread")}
                 for j in items]
 
 

@@ -18,8 +18,8 @@ import re
 import time
 from typing import Callable
 
-from . import (account, alias, autolisten, blocked, budget, config, jobs,
-               learn, orgs, plugins, scheduler, sessions, usage)
+from . import (account, alias, autolisten, blocked, botmute, budget, config,
+               jobs, learn, orgs, plugins, scheduler, sessions, usage)
 from .config import t
 
 # Command surface. Korean aliases sit alongside the English ones so a Korean
@@ -41,6 +41,7 @@ _ALIAS_SUB_RE = re.compile(r"^(list|add|remove|delete|목록|추가|삭제|제�
                            re.IGNORECASE | re.DOTALL)
 BUDGET_RE = re.compile(r"^!(?:budget|예산)\b\s*(.*)$", re.IGNORECASE)
 ACCOUNT_RE = re.compile(r"^!(?:account|계정)\b\s*(.*)$", re.IGNORECASE)
+EXIT_RE = re.compile(r"^!(?:exit|종료)\b\s*(.*)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
     r"^(create|list|info|add|remove|bind|unbind|allow|deny)\b\s*(.*)$",
@@ -140,6 +141,9 @@ def _builtin(text: str, ctx: dict) -> str | None:
     m = ACCOUNT_RE.match(text)
     if m:
         return account_cmd(m.group(1))
+    m = EXIT_RE.match(text)
+    if m:
+        return exit_cmd(m.group(1), ctx)
     m = ORG_RE.match(text)
     if m:
         return org_cmd(m.group(1), ctx)
@@ -307,6 +311,51 @@ def budget_cmd(arg: str) -> str:
     if head in budget.ACTIONS:
         return t(budget.apply(head))
     return t("budget_help")
+
+
+# ─────────────────────────── ending a bot exchange ───────────────────────────
+def exit_cmd(arg: str, ctx: dict) -> str:
+    """`!exit` — stop hearing other bots here. People are unaffected.
+
+    Scoped like `!listen`: in a thread it ends that thread's exchange, at
+    channel top level the whole channel. Any bot work already in flight here is
+    cancelled too — otherwise a reply lands after you asked it to stop.
+    """
+    a = (arg or "").strip().lower()
+    channel, thread = ctx.get("channel"), ctx.get("thread")
+    if a in ("list", "목록"):
+        return fmt_muted()
+    if a and a not in ("undo", "취소", "해제", "on"):
+        return t("exit_help")
+    if a:                                           # undo
+        return t(botmute.remove(channel, thread))
+    key = botmute.add(channel, thread)
+    n = _cancel_bot_jobs(channel, thread)
+    return t(key) + ("\n" + t("exit_cancelled", n=n) if n else "")
+
+
+def _cancel_bot_jobs(channel: str, thread: str | None) -> int:
+    """Kill bot-triggered work in this channel/thread. Only `kind == "bot"` —
+    the owner's own request in the same thread must survive `!exit`."""
+    n = 0
+    for j in jobs.snapshot():
+        if j.get("kind") != "bot" or j.get("channel") != channel:
+            continue
+        if thread and j.get("thread") != thread:
+            continue
+        if jobs.cancel(j["id"]) in ("dequeued", "killed"):
+            n += 1
+    return n
+
+
+def fmt_muted() -> str:
+    chans, threads = botmute.snapshot()
+    if not chans and not threads:
+        return t("exit_list_none")
+    lines = [t("exit_list_header", c=len(chans), t=len(threads))]
+    lines += [f"• #{c}" for c in chans]
+    lines += [f"• 🧵 {th}" for th in threads]
+    return "\n".join(lines)
 
 
 # ─────────────────────────── account pin ───────────────────────────
