@@ -90,6 +90,88 @@ def test_clear_makes_it_unknown(tmp_path, monkeypatch):
     assert health.snapshot()["known"] is False
 
 
+# ── the beat only counts while we can still hear the platform ───────────────
+def test_no_probe_means_beat(tmp_path, monkeypatch):
+    """Adapters that never pass one (Discord) keep the old behaviour."""
+    _setup(tmp_path, monkeypatch)
+    assert health.reachable(None) is True
+
+
+def test_connected_probe_allows_the_beat(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    assert health.reachable(lambda: True) is True
+
+
+def test_detached_socket_withholds_the_beat(tmp_path, monkeypatch):
+    """Regression (2026-08): a worker whose Socket Mode connection had dropped
+    kept beating from its timer thread, so `alive` stayed True and the watchdog
+    never restarted it — three days of silence that looked like health."""
+    _setup(tmp_path, monkeypatch)
+    assert health.reachable(lambda: False) is False
+
+
+def test_a_broken_probe_does_not_retire_a_healthy_worker(tmp_path, monkeypatch):
+    """Fail open: a probe that raises is our bug, not the worker's."""
+    _setup(tmp_path, monkeypatch)
+
+    def boom() -> bool:
+        raise RuntimeError("probe exploded")
+
+    assert health.reachable(boom) is True
+
+
+def test_a_tick_stamps_while_attached_and_freezes_once_deaf(tmp_path,
+                                                            monkeypatch):
+    """The wiring, not just the helper: the timer's turn is `tick`, and it must
+    consult the probe every time. Left unchecked this is the failure being
+    fixed — the thread beats on regardless and the stamp never goes stale."""
+    _stamp(monkeypatch, tmp_path, age=1)
+    before = health.read()["last_beat"]
+
+    health.tick(lambda: True)
+    attached = health.read()["last_beat"]
+    assert attached > before, "should stamp while the socket is up"
+
+    health.tick(lambda: False)               # socket drops
+    assert health.read()["last_beat"] == attached, "stamp must freeze once deaf"
+
+
+def test_withheld_beats_go_stale_and_read_as_dead(tmp_path, monkeypatch):
+    """The whole point: withholding the stamp routes a deaf worker into the
+    existing stale_heartbeat path instead of inventing a new failure mode."""
+    _stamp(monkeypatch, tmp_path, age=health.STALE_AFTER + 1)
+    s = health.snapshot()
+    assert s["alive"] is False and s["reason"] == "stale_heartbeat"
+
+
+def test_a_read_that_lands_mid_write_retries(tmp_path, monkeypatch):
+    """A reader arriving while the stamp is being rewritten gets a sharing
+    violation on Windows. Answering None there reads as *never_started*, and
+    that is the one answer that makes the watchdog spawn a second worker — so
+    read retries before it gives up. (Measured: under a writer looping without
+    pause, retrying cut failed reads from 646/1500 to 93/1500; at the real
+    one-per-minute cadence the window is far smaller still.)"""
+    _stamp(monkeypatch, tmp_path, age=1)
+    real = type(health._FILE).read_text
+    calls = {"n": 0}
+
+    def flaky(self, *a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("WinError 5 — writer holds the file")
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(type(health._FILE), "read_text", flaky)
+    assert health.read() is not None, "gave up while a writer held the file"
+    assert calls["n"] == 2, "should have retried exactly once"
+
+
+def test_a_missing_stamp_still_answers_immediately(tmp_path, monkeypatch):
+    """No file means never started — that is an answer, not a transient."""
+    _setup(tmp_path, monkeypatch)
+    assert health.read() is None
+
+
 # ── pid check ───────────────────────────────────────────────────────────────
 def test_pid_running_on_self():
     assert health.pid_running(os.getpid()) is True

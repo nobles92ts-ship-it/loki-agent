@@ -6,6 +6,11 @@ stamp means the process died without telling anyone, which is exactly the
 failure that used to go unnoticed until someone messaged the bot and got
 silence back.
 
+The stamp is withheld while the platform connection is down (see the
+``connected`` probe on :func:`start`), so "alive" means *reachable*, not merely
+*running*. A process with a live thread and a dead socket is not healthy — it
+is the quietest way this thing fails.
+
 Nothing here restarts anything — that belongs to the OS. See
 ``loki.core.gateway``.
 """
@@ -15,6 +20,7 @@ import json
 import os
 import threading
 import time
+from typing import Callable
 
 from . import config
 from .config import log
@@ -29,8 +35,34 @@ _lock = threading.Lock()
 _state: dict = {}
 
 
-def start(platform: str) -> None:
-    """Begin stamping. Called once by an adapter's run()."""
+def reachable(probe: "Callable[[], bool] | None") -> bool:
+    """Is the event stream still attached? No probe means "assume yes"."""
+    if probe is None:
+        return True
+    try:
+        ok = bool(probe())
+    except Exception:
+        # A broken probe must not retire a worker that is doing fine.
+        log.exception("connectivity probe failed — beating anyway")
+        return True
+    if not ok:
+        log.warning("event stream detached — withholding heartbeat")
+    return ok
+
+
+def start(platform: str,
+          connected: "Callable[[], bool] | None" = None) -> None:
+    """Begin stamping. Called once by an adapter's run().
+
+    ``connected`` answers *can we still hear the platform?* — the timer skips
+    the stamp while it says no, so a detached worker goes stale on its own and
+    the watchdog restarts it through the existing ``stale_heartbeat`` path.
+
+    Without it the beat only ever proved this process still had a thread left.
+    That is how a dropped Socket Mode connection stayed ``reason=ok`` for three
+    days in August 2026: the process was up, the loop was beating, and nothing
+    was listening.
+    """
     with _lock:
         _state.update(pid=os.getpid(), platform=platform,
                       started=time.time(), jobs=0)
@@ -39,9 +71,15 @@ def start(platform: str) -> None:
     def _loop() -> None:
         while True:
             time.sleep(BEAT_SEC)
-            beat()
+            tick(connected)
 
     threading.Thread(target=_loop, daemon=True).start()
+
+
+def tick(connected: "Callable[[], bool] | None" = None) -> None:
+    """One turn of the heartbeat: stamp only while we can still hear them."""
+    if reachable(connected):
+        beat()
 
 
 def beat(job_done: bool = False) -> None:
@@ -60,10 +98,23 @@ def beat(job_done: bool = False) -> None:
 
 
 def read() -> dict | None:
-    try:
-        return json.loads(_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    """The stamp, or None if there isn't one.
+
+    Retries briefly on anything else: on Windows a reader that arrives during
+    the writer's ``os.replace`` gets a sharing violation, and answering None
+    there would read as *never_started* — the one answer that makes the
+    watchdog start a second worker.
+    """
+    for attempt in range(3):
+        try:
+            return json.loads(_FILE.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except Exception:
+            if attempt == 2:
+                return None
+            time.sleep(0.02)
+    return None
 
 
 def pid_running(pid: int | None) -> bool:

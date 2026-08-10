@@ -779,7 +779,12 @@ def run() -> None:
         log.exception("auth.test failed")
         print("[loki] Slack auth failed — check SLACK_BOT_TOKEN.", file=sys.stderr)
         sys.exit(2)
-    health.start("slack")
+    handler = SocketModeHandler(app, APP_TOKEN)
+    # The heartbeat rides on the socket: no connection, no stamp, and the
+    # watchdog retires us. Beating on a timer alone once kept a deaf worker
+    # looking healthy for three days.
+    health.start("slack", connected=lambda: bool(
+        handler.client and handler.client.is_connected()))
     jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
     scheduler.start(_fire_schedule)
     log.info("worker starting allowlist=%s work_dir=%s mode=%s lang=%s conc=%s",
@@ -788,4 +793,4 @@ def run() -> None:
     print(f"Loki (Slack) — allowlist={ALLOWED_USER}, work_dir={config.WORK_DIR}, "
           f"mode={config.PERMISSION_MODE}")
     print("Connecting to Slack (Socket Mode)…")
-    SocketModeHandler(app, APP_TOKEN).start()
+    handler.start()
