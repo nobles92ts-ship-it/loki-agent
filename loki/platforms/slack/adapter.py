@@ -376,7 +376,8 @@ def _handle(job: dict) -> None:
                                             n=CHANNEL_CTX_MSGS))
         else:
             context, kind, scope_label = "", "kind_thread", ""
-        prompt = build_prompt(context, job["text"], kind, scope_label)
+        prompt = build_prompt(context, job["text"], kind, scope_label,
+                              session_key=job.get("session_key"))
         img_paths, doc_paths = _download_attachments(job.get("attachments") or [])
         if doc_paths:
             prompt = t("file_note", n=len(doc_paths),

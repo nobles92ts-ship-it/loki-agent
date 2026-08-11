@@ -19,7 +19,8 @@ import time
 from typing import Callable
 
 from . import (account, alias, autolisten, blocked, botmute, budget, config,
-               jobs, learn, orgs, plugins, scheduler, sessions, usage)
+               goals, jobs, learn, orgs, plugins, providers, scheduler,
+               sessions, usage)
 from .config import t
 
 # Command surface. Korean aliases sit alongside the English ones so a Korean
@@ -41,6 +42,15 @@ _ALIAS_SUB_RE = re.compile(r"^(list|add|remove|delete|목록|추가|삭제|제�
                            re.IGNORECASE | re.DOTALL)
 BUDGET_RE = re.compile(r"^!(?:budget|예산)\b\s*(.*)$", re.IGNORECASE)
 ACCOUNT_RE = re.compile(r"^!(?:account|계정)\b\s*(.*)$", re.IGNORECASE)
+PROVIDER_RE = re.compile(r"^!(?:provider|제공자|모델)\b\s*(.*)$", re.IGNORECASE)
+GOAL_RE = re.compile(r"^!(?:goal|목표)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
+_GOAL_SUB_RE = re.compile(
+    r"^(list|show|step|done|close|drop|목록|보기|단계|완료|삭제)\b\s*(.*)$",
+    re.IGNORECASE | re.DOTALL)
+# A sub-verb only wins when a real goal id follows it. Without this,
+# `!goal done with the release` closes a goal named "with" instead of opening
+# the goal the sentence obviously is.
+_GOAL_ID_RE = re.compile(r"^g\d+$", re.IGNORECASE)
 EXIT_RE = re.compile(r"^!(?:exit|종료)\b\s*(.*)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
@@ -141,6 +151,12 @@ def _builtin(text: str, ctx: dict) -> str | None:
     m = ACCOUNT_RE.match(text)
     if m:
         return account_cmd(m.group(1))
+    m = PROVIDER_RE.match(text)
+    if m:
+        return provider_cmd(m.group(1))
+    m = GOAL_RE.match(text)
+    if m:
+        return goal_cmd(m.group(1), ctx)
     m = EXIT_RE.match(text)
     if m:
         return exit_cmd(m.group(1), ctx)
@@ -394,6 +410,141 @@ def fmt_account() -> str:
         t("account_status_dir", dir=s["config_dir"]),
         t("account_status_hint"),
     ])
+
+
+# ─────────────────────────── provider ───────────────────────────
+def provider_cmd(arg: str) -> str:
+    """`!provider [name]` — which agent answers.
+
+    Switching keeps every conversation: sessions are filed per provider, so
+    coming back finds the thread you left. That is the difference from
+    `!account`, where the same conversation would replay under a different
+    login and has to be dropped.
+    """
+    a = (arg or "").strip().lower()
+    if not a:
+        return fmt_providers()
+    if a in ("help", "도움말", "?"):
+        return t("provider_help")
+    if a not in providers.ALL:
+        return t("provider_unknown", name=a[:24],
+                 names=" · ".join(f"`{n}`" for n in providers.ALL))
+    mod = providers.ALL[a]
+    if not providers.set_current(a):
+        return t("provider_nochange", label=mod.LABEL)
+    ready, note = mod.available()
+    if not ready:
+        return t("provider_not_ready", label=mod.LABEL, note=note)
+    msg = t("provider_switched", label=mod.LABEL, plan=mod.PLAN)
+    # A provider that answers but can't read the disk is a different tool, not
+    # a slower one. Say it at the moment of switching, not in the docs.
+    extras = [note] if note else []
+    if not getattr(mod, "SANDBOX", False) and hasattr(mod, "caveat"):
+        extras.append(mod.caveat())
+    return msg + "".join(t("provider_switched_warn", note=e) for e in extras)
+
+
+def fmt_providers() -> str:
+    items = providers.listing()
+    now = next((i for i in items if i["current"]), items[0])
+    lines = [t("provider_header", label=now["label"], plan=now["plan"])]
+    for i in items:
+        note = "" if i["ready"] and not i["note"] else f" — ⚠️ {i['note']}"
+        lines.append(t("provider_line",
+                       mark="▶" if i["current"] else ("✅" if i["ready"] else "·"),
+                       name=i["name"], label=i["label"], plan=i["plan"],
+                       note=note))
+    return "\n".join(lines)
+
+
+# ─────────────────────────── goals ───────────────────────────
+def goal_cmd(arg: str, ctx: dict) -> str:
+    """`!goal …` — a standing objective this conversation works toward.
+
+    Anything that isn't a known sub-verb is the goal's title, so the common case
+    (`!goal get the navmesh run green`) needs no keyword at all.
+    """
+    a = (arg or "").strip()
+    if not a or a.lower() in ("help", "도움말", "?"):
+        return t("goal_help")
+    m = _GOAL_SUB_RE.match(a)
+    if not m:
+        return _goal_add(a, ctx)
+    sub, rest = m.group(1).lower(), (m.group(2) or "").strip()
+    if sub in ("list", "목록"):
+        return fmt_goals()
+    gid, _, tail = rest.partition(" ")
+    gid, tail = gid.strip().lower(), tail.strip()
+    if not _GOAL_ID_RE.match(gid):
+        # No id after the verb, so this was never a sub-command — "done with
+        # the release" is a goal. Opening one is the safe reading: the worst
+        # case is a goal you drop, rather than one you closed by accident.
+        return _goal_add(a, ctx)
+    if sub in ("show", "보기"):
+        goal = goals.get(gid)
+        return fmt_goal(goal) if goal else t("goal_not_found", id=gid)
+    if sub in ("step", "단계"):
+        if not tail:
+            return t("goal_help")
+        n = goals.add_step(gid, tail)
+        if n is not None:
+            return t("goal_step_added", id=gid, n=n, text=tail)
+        # add_step says None for two different problems, and "here is the help
+        # text" answers neither of them.
+        goal = goals.get(gid)
+        return (t("goal_already_closed", id=gid) if goal
+                else t("goal_not_found", id=gid))
+    if sub in ("done", "close", "완료"):
+        goal = goals.close(gid, tail)
+        if goal:
+            return t("goal_closed", id=gid, title=goal["title"])
+        return (t("goal_already_closed", id=gid) if goals.get(gid)
+                else t("goal_not_found", id=gid))
+    if sub in ("drop", "삭제"):
+        return (t("goal_dropped", id=gid) if goals.drop(gid)
+                else t("goal_not_found", id=gid))
+    return t("goal_help")
+
+
+def _goal_add(title: str, ctx: dict) -> str:
+    goal = goals.add(title, where=ctx.get("channel") or "",
+                     session_key=ctx.get("session_key"))
+    if not goal:
+        return t("goal_help")
+    return t("goal_added", id=goal["id"], title=goal["title"])
+
+
+def fmt_goals() -> str:
+    items = goals.list_all()
+    if not items:
+        return t("goal_list_empty")
+    open_n = sum(1 for g in items if g["state"] == goals.OPEN)
+    lines = [t("goal_list_header", open=open_n, done=len(items) - open_n)]
+    now = time.time()
+    for g in items:
+        lines.append(t("goal_list_line",
+                       mark="🎯" if g["state"] == goals.OPEN else "✅",
+                       id=g["id"], title=g["title"],
+                       steps=len(g.get("steps") or []),
+                       age=fmt_dur(now - g.get("created", now))))
+    return "\n".join(lines)
+
+
+def fmt_goal(goal: dict) -> str:
+    lines = [t("goal_show", title=goal["title"], id=goal["id"],
+               state=goal["state"],
+               age=fmt_dur(time.time() - goal.get("created", time.time())),
+               where=goal.get("where") or "-")]
+    steps = goal.get("steps") or []
+    if not steps:
+        lines.append(t("goal_show_nosteps", id=goal["id"]))
+    else:
+        lines.append(t("goal_show_steps"))
+        lines += [t("goal_show_step", mark="✅" if s.get("done") else "▫️",
+                    n=i, text=s["text"]) for i, s in enumerate(steps, 1)]
+    if goal.get("note"):
+        lines.append(f"— {goal['note']}")
+    return "\n".join(lines)
 
 
 def fmt_budget() -> str:

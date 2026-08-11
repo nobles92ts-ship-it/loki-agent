@@ -110,10 +110,19 @@ def doctor() -> int:
     platform = (os.environ.get("LOKI_PLATFORM", "slack") or "slack").lower()
     _info(f"platform: {platform}")
 
-    from . import brain
+    from . import brain, providers
     ver = brain.claude_version()
-    _check("claude CLI reachable", ver not in ("", "?"),
-           f"{config.CLAUDE_CMD} → {ver}")
+    now = providers.current()
+    _check(f"{now.NAME} CLI reachable", ver not in ("", "?"),
+           f"{now.LABEL} → {ver}")
+    # The others are listed but never failed: having only the one you use set
+    # up is the normal state, and a red cross for "you haven't signed in to
+    # Gemini" would make a healthy install look broken.
+    for p in providers.listing():
+        if p["current"]:
+            continue
+        _info(f"provider {p['name']}: "
+              + ("ready · " + p["plan"] if p["ready"] else p["note"]))
 
     if config.CLAUDE_OAUTH_TOKEN:
         from . import account

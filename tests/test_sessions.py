@@ -13,7 +13,12 @@ def _setup(tmp_path, monkeypatch, idle_min=120):
 
 def _age(key, seconds):
     """Backdate a stored session so expiry can be tested without sleeping."""
-    sessions._state[key]["ts"] = time.time() - seconds
+    sessions._state[sessions._scoped(key)]["ts"] = time.time() - seconds
+
+
+def _stored(key) -> bool:
+    """Is this conversation on file? Storage is keyed per provider."""
+    return sessions._scoped(key) in sessions._state
 
 
 # ── key policy ──────────────────────────────────────────────────────────────
@@ -71,7 +76,7 @@ def test_idle_session_expires_and_is_dropped(tmp_path, monkeypatch):
     sessions.remember("dm:D1", "sess-abc")
     _age("dm:D1", 121 * 60)
     assert sessions.get("dm:D1") is None
-    assert "dm:D1" not in sessions._state      # dropped, not just hidden
+    assert not _stored("dm:D1")                # dropped, not just hidden
 
 
 def test_active_session_survives(tmp_path, monkeypatch):
@@ -103,7 +108,7 @@ def test_writes_prune_other_expired_entries(tmp_path, monkeypatch):
     sessions.remember("dm:D1", "old")
     _age("dm:D1", 200 * 60)
     sessions.remember("dm:D2", "new")          # unrelated conversation
-    assert "dm:D1" not in sessions._state      # swept without ever being read
+    assert not _stored("dm:D1")                # swept without ever being read
 
 
 def test_active_counts_only_live_sessions(tmp_path, monkeypatch):
@@ -164,4 +169,6 @@ def test_malformed_entries_are_ignored(tmp_path, monkeypatch):
         json.dumps({"ok": {"sid": "s", "ts": time.time()},
                     "no_sid": {"ts": time.time()},
                     "not_a_dict": "sess-x"}), encoding="utf-8")
-    assert list(sessions._load()) == ["ok"]
+    # and an unscoped key is adopted by the default provider, not dropped —
+    # upgrading an install must not cut off conversations mid-thread.
+    assert list(sessions._load()) == ["claude:ok"]

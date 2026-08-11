@@ -10,6 +10,14 @@ picked up the next morning starts clean instead of dragging yesterday's
 context — and yesterday's token cost — behind it. ``!new`` drops one on
 demand. State persists to ``state/sessions.json`` so restarting the worker
 doesn't wipe an in-flight conversation.
+
+Keys are filed **under the provider that issued them**. A session id is a
+receipt from one agent's store; handing Gemini's id to Claude's ``--resume``
+does not continue the conversation, it fails — so a provider switch must not
+be able to cross the two. Scoping here rather than at the call sites means the
+adapters, the console and the scheduler all inherited it without a change, and
+it is why switching providers keeps both conversations instead of dropping
+one: flip back and yesterday's thread is still in its own drawer.
 """
 from __future__ import annotations
 
@@ -17,11 +25,16 @@ import json
 import threading
 import time
 
-from . import config
+from . import config, providers
 from .config import log
 
 _FILE = config.STATE / "sessions.json"
 _lock = threading.Lock()
+
+
+def _scoped(key: str | None) -> str | None:
+    """``dm:C123`` → ``claude:dm:C123`` for whichever provider is answering."""
+    return f"{providers.name()}:{key}" if key else key
 
 
 def key_for(channel: str, thread: str | None, is_dm: bool) -> str | None:
@@ -46,10 +59,18 @@ def key_for(channel: str, thread: str | None, is_dm: bool) -> str | None:
 def _load() -> dict[str, dict]:
     try:
         raw = json.loads(_FILE.read_text(encoding="utf-8"))
-        return {k: v for k, v in raw.items()
-                if isinstance(v, dict) and v.get("sid")}
     except Exception:
         return {}
+    # Entries written before sessions were scoped by provider have no provider
+    # segment, and every one of them came from Claude. Adopt them rather than
+    # ignore them, so upgrading doesn't cut off conversations mid-thread.
+    prefixes = tuple(f"{p}:" for p in providers.ALL)
+    out: dict[str, dict] = {}
+    for k, v in raw.items():
+        if not (isinstance(v, dict) and v.get("sid")):
+            continue
+        out[k if k.startswith(prefixes) else f"{providers.DEFAULT}:{k}"] = v
+    return out
 
 
 _state: dict[str, dict] = _load()
@@ -73,6 +94,7 @@ def get(key: str | None) -> str | None:
     An entry that has gone idle is dropped on the way out, so expiry costs
     nothing extra — the next turn simply starts over.
     """
+    key = _scoped(key)
     if not key:
         return None
     with _lock:
@@ -87,7 +109,8 @@ def get(key: str | None) -> str | None:
 
 
 def remember(key: str | None, session_id: str | None) -> None:
-    """Store the session Claude just returned and mark the conversation alive."""
+    """Store the session the agent just returned and mark the conversation alive."""
+    key = _scoped(key)
     if not key or not session_id:
         return
     now = time.time()
@@ -99,14 +122,21 @@ def remember(key: str | None, session_id: str | None) -> None:
 
 
 def reset(key: str | None) -> bool:
-    """Forget one conversation (``!new``). True if there was one to forget."""
+    """Forget one conversation (``!new``). True if there was one to forget.
+
+    Only this provider's copy: `!new` on Gemini should not also wipe the Claude
+    thread you left open in the same DM.
+    """
+    key = _scoped(key)
     if not key:
         return False
     with _lock:
-        if _state.pop(key, None) is None:
+        entry = _state.pop(key, None)
+        if entry is None:
             return False
         _save()
-        return True
+    _forget_local(entry.get("sid"))
+    return True
 
 
 def reset_all() -> int:
@@ -120,9 +150,28 @@ def reset_all() -> int:
         n = len(_state)
         if not n:
             return 0
+        dropped = list(_state.values())
         _state.clear()
         _save()
+    for entry in dropped:
+        _forget_local(entry.get("sid"))
     return n
+
+
+def _forget_local(session_id: str | None) -> None:
+    """Drop any transcript a provider keeps on *this* disk.
+
+    Most providers hold the conversation on their own side, so forgetting the
+    id is the whole job. Groq has no server-side session — its history is a
+    file here — and leaving that behind would make `!new` a lie.
+    """
+    for mod in providers.ALL.values():
+        forget = getattr(mod, "forget", None)
+        if forget:
+            try:
+                forget(session_id)
+            except Exception:
+                log.exception("%s.forget failed", mod.NAME)
 
 
 def active() -> int:

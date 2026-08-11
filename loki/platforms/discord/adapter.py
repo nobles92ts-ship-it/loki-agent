@@ -205,7 +205,8 @@ def _handle(job: dict) -> None:
                                                   n=CHANNEL_CTX_MSGS)
         else:
             context, kind, scope_label = "", "kind_thread", ""
-        prompt = build_prompt(context, job["text"], kind, scope_label)
+        prompt = build_prompt(context, job["text"], kind, scope_label,
+                              session_key=job.get("session_key"))
         if job.get("doc_paths"):
             prompt = t("file_note", n=len(job["doc_paths"]),
                        paths="\n".join(f"- {p}" for p in job["doc_paths"])) + prompt
