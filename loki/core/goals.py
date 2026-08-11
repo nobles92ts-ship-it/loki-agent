@@ -81,8 +81,9 @@ def add(title: str, where: str = "", session_key: str | None = None) -> dict | N
         state = _load()
         gid = _next_id(state)
         goal = {"id": gid, "title": title, "state": OPEN, "steps": [],
-                "created": time.time(), "closed": 0, "note": "",
-                "where": where or "", "session_key": session_key or ""}
+                "created": time.time(), "touched": time.time(), "closed": 0,
+                "note": "", "where": where or "",
+                "session_key": session_key or ""}
         state[gid] = goal
         return goal if _save(state) else None
 
@@ -108,6 +109,7 @@ def add_step(gid: str, text: str) -> int | None:
         if not goal or goal["state"] != OPEN:
             return None
         goal["steps"].append({"text": text, "done": False})
+        goal["touched"] = time.time()
         return len(goal["steps"]) if _save(state) else None
 
 
@@ -119,6 +121,7 @@ def step_done(gid: str, n: int) -> bool:
         if not goal or not (1 <= n <= len(goal.get("steps", []))):
             return False
         goal["steps"][n - 1]["done"] = True
+        goal["touched"] = time.time()
         return _save(state)
 
 

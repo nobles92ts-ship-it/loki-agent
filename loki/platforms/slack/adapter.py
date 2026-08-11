@@ -22,7 +22,7 @@ from ...core import (alias, autolisten, blocked, botallow, botmute, brain, budge
                      sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
-from . import checklists
+from . import assistant, checklists
 
 # Optional private command extension — gitignored, workspace-specific heavy
 # commands (see private_commands.example.py). Absent in a clean checkout.
@@ -42,6 +42,7 @@ CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
 app = App(token=BOT_TOKEN)
 checklists.register(app)            # clickable-checkbox handler (needs interactivity)
+assistant.register(app, ALLOWED_USER, lambda c, ts: _session_key(c, ts))
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 BOT_ID: str | None = None           # our own B… id — never allowed to trigger us
 
@@ -788,6 +789,7 @@ def run() -> None:
         handler.client and handler.client.is_connected()))
     jobs.start(_handle, _on_job_error, kill=brain.tree_kill)
     scheduler.start(_fire_schedule)
+    assistant.start(app, _owner_dm)     # nudges Loki raises without being asked
     log.info("worker starting allowlist=%s work_dir=%s mode=%s lang=%s conc=%s",
              ALLOWED_USER, config.WORK_DIR, config.PERMISSION_MODE, config.LANG,
              config.JOB_CONCURRENCY)

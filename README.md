@@ -157,6 +157,33 @@ An open goal rides along in that conversation's prompt on every turn, as its own
 
 Three deliberate limits. **Goals never act on their own** — a goal shapes the next turn *you* take; `!schedule` already exists for work that should fire on a clock, and autonomy without a supervisor is how a subscription evaporates overnight. **Steps are notes, not a plan the code executes** — they give a long objective a written spine both you and the model can read on turn twenty. And **they are yours**: `!goal` is owner-only, and a goal only rides along in the conversation it was opened in.
 
+### Nudges — Loki opening the conversation
+
+Loki is good at answering and bad at being *asked*. You have to arrive already knowing what to request, and the requests worth making are exactly the ones whose details you do not have at hand: which run failed, what `g2` was waiting on, whether the provider you switched to last week still works. Nudges close that gap from Loki's side, in two directions.
+
+**The suggestion pane.** With Slack's assistant view enabled, opening a thread with Loki replaces the blank composer with up to four things worth asking — the live conditions first, then your open goals and their next undone step. Tap one and it runs. Guests who open a thread see three generic openings and nothing else: a goal's title is your private note about your own work.
+
+**The DM you didn't ask for.** Every 15 minutes Loki checks three things about state it already keeps, and speaks first when one becomes true:
+
+| Watcher | Trips when | Quiet for |
+|---|---|---|
+| `goal:<id>` | an open goal has not moved in `LOKI_NUDGE_STALE_H` hours (default 72) | 24h |
+| `fail:<reason>` | the last 3 runs all failed the same way | 6h |
+| `provider:<name>` | the selected provider cannot answer — nothing else reports this until a request is already lost | 12h |
+
+The alert arrives with three buttons: **run it**, **park it**, or **silence that one watcher**. Nothing runs until you tap.
+
+```
+!nudge                   # what's armed, what's true now, what already spoke
+!nudge now               # run the watchers and show what's true — without spending it
+!nudge off               # stop being interrupted (the suggestion pane keeps working)
+!nudge off provider:codex   # silence one watcher, keep the rest
+```
+
+The restraint is the design. A watcher that is reliably right is a watcher that reliably interrupts, and an assistant that interrupts is one you mute — taking the correct alerts down with the noisy one. So every nudge fires at most once per cooldown, at most two per check, and a single noisy watcher can be silenced without disarming the one that tells you the provider stopped answering. Watchers only read state Loki already keeps; none of them starts a run to find something to say.
+
+> Slack only: needs the `assistant:write` scope and the `assistant_view` feature — both are in [manifest.json](loki/platforms/slack/manifest.json). An app installed before v1.10 must have its manifest updated and be reinstalled before the pane appears; the DM nudges work either way.
+
 ## Permissions — who can do what
 
 Two built-in tiers, cleanly separated:
@@ -211,10 +238,11 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!account [on\|off]` | DM | which Claude account spawns run as — the pinned token, or the config dir's own login. See [two accounts](#two-accounts--switching-which-one-spends) |
 | `!provider [name]` | DM | which agent answers: `claude` `antigravity` `codex` `kimi` `gemini` `groq`. See [providers](#providers--which-agent-answers) |
 | `!goal …` | anywhere | a standing objective this conversation works toward: `<title>` `list` `show g1` `step g1 <next>` `done g1` `drop g1`. See [goals](#goals--an-objective-that-outlives-a-turn) |
+| `!nudge …` | anywhere | what Loki raises before you ask: `on` `off` `now` `off <key>`. See [nudges](#nudges--loki-opening-the-conversation) |
 | `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
-Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크` · `계정` · `종료`.
+Korean aliases also work: `중지` · `작업목록` · `취소` · `사용량` · `예약` · `학습` · `차단` · `차단해제` · `채널요약` · `청취` · `청취해제` · `청취목록` · `조직` · `체크` · `계정` · `종료` · `넛지`.
 
 **Scheduler** — Loki turns proactive: schedule prompts from your DM, results post back there. Runs at *your* permission mode; machine-local time. If the PC was off, recurring schedules skip to their next slot (no catch-up spam) and a missed `once` fires on boot.
 

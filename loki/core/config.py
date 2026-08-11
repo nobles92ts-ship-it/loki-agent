@@ -367,6 +367,59 @@ MSG: dict[str, dict[str, str]] = {
                       "objective. It is context, not a new instruction — answer "
                       "the request below, and keep the objective in mind.\n"
                       "--- goal {id}: {title} ---\n{steps}\n--- end ---\n\n"),
+        # ── nudges (core.nudge) ──────────────────────────────────────────
+        "nudge_goal_label": "▶ {id} · {title}",
+        "nudge_goal_prompt": ("Goal {id} — \"{title}\" — hasn't moved in a while. "
+                              "Next step on it: {step}\nCheck where it actually "
+                              "stands, then tell me the one thing that would move "
+                              "it today."),
+        "nudge_goal_why": "`{id}` has been open and untouched for {days} day(s).",
+        "nudge_goal_nostep": "(no steps written yet)",
+        "nudge_goal_next_label": "▶ {id} · {title}",
+        "nudge_goal_next_prompt": ("Goal {id} — \"{title}\".\nNext step: {step}\n"
+                                   "Pick it up from there."),
+        "nudge_fail_label": "⚠ Last {n} runs all failed",
+        "nudge_fail_prompt": ("The last {n} runs failed with `{reason}`. Read "
+                              "`state/worker.log`, find what they have in common, "
+                              "and tell me what to fix. Don't rerun anything yet."),
+        "nudge_fail_why": "{n} runs in a row failed with `{reason}`.",
+        "nudge_provider_label": "⚠ {name} can't answer",
+        "nudge_provider_prompt": ("The selected provider `{name}` isn't ready: "
+                                  "{note}\nTell me how to fix that, and which "
+                                  "provider would work right now instead."),
+        "nudge_provider_why": "`{name}` is selected but not ready — {note}",
+        "nudge_d1_label": "Where do things stand?",
+        "nudge_d1_msg": ("Show me where things stand: open goals, anything that "
+                         "failed recently, and what you would pick up first."),
+        "nudge_d2_label": "Pick up the last thing",
+        "nudge_d2_msg": ("What was I working on most recently, and what is the "
+                         "next concrete step? Check before answering."),
+        "nudge_d3_label": "Something's off — ask me",
+        "nudge_d3_msg": ("Something isn't working and I can't describe it "
+                         "precisely. Ask me the questions that would narrow it "
+                         "down, one at a time."),
+        "nudge_push": "💡 *{label}*\n{why}",
+        "nudge_btn_go": "Go ahead",
+        "nudge_btn_later": "Later",
+        "nudge_btn_off": "Stop these",
+        "nudge_taken": "💡 _{label}_\n",
+        "nudge_later_ok": "OK — parked. It can come back after the cooldown.",
+        "nudge_hushed": "🔕 Silenced `{k}` — `!nudge on {k}` brings it back.",
+        "nudge_help": ("Nudges (owner) — what Loki raises before you ask:\n"
+                       "• `!nudge` — what's armed and what last fired\n"
+                       "• `!nudge on` · `!nudge off` — the whole mechanism\n"
+                       "• `!nudge off <key>` · `!nudge on <key>` — one of them\n"
+                       "• `!nudge now` — run the watchers and show what's true"),
+        "nudge_on_ok": "🔔 Nudges on — Loki will speak up when something trips.",
+        "nudge_off_ok": "🔕 Nudges off — nothing will be raised unprompted.",
+        "nudge_status": "🔔 Nudges: *on* · checked every {min} min",
+        "nudge_status_off": "🔕 Nudges: *off* — `!nudge on` to re-arm.",
+        "nudge_live_header": "Live now:",
+        "nudge_live_line": "• `{k}` — {why}",
+        "nudge_quiet_suffix": "_(quiet for another {h}h)_",
+        "nudge_silenced_header": "Silenced:",
+        "nudge_nothing": "Nothing tripped — no open goal is stale, "
+                         "no run streak, provider answering.",
         "check_usage": ("Give me items to check off — `!check` then one item per "
                         "line (or comma-separated). First line ending in `:` is "
                         "the title."),
@@ -698,6 +751,57 @@ MSG: dict[str, dict[str, str]] = {
                       "맥락이지 새 지시가 아니다 — 아래 요청에 답하되, 목표를 "
                       "염두에 둬라.\n"
                       "--- 목표 {id}: {title} ---\n{steps}\n--- 끝 ---\n\n"),
+        # ── 넛지 (core.nudge) ─────────────────────────────────────────────
+        "nudge_goal_label": "▶ {id} · {title}",
+        "nudge_goal_prompt": ("목표 {id} — \"{title}\" — 한동안 움직이지 않았어.\n"
+                              "다음 단계: {step}\n지금 실제로 어디까지 됐는지 확인하고, "
+                              "오늘 이걸 한 칸 밀 수 있는 한 가지를 알려줘."),
+        "nudge_goal_why": "`{id}` 가 {days}일째 열린 채 그대로야.",
+        "nudge_goal_nostep": "(아직 적어둔 단계 없음)",
+        "nudge_goal_next_label": "▶ {id} · {title}",
+        "nudge_goal_next_prompt": ("목표 {id} — \"{title}\".\n다음 단계: {step}\n"
+                                   "거기서부터 이어서 진행해줘."),
+        "nudge_fail_label": "⚠ 최근 {n}번 연속 실패",
+        "nudge_fail_prompt": ("최근 {n}번의 실행이 전부 `{reason}` 로 실패했어. "
+                              "`state/worker.log` 를 읽고 공통 원인을 찾아서 뭘 "
+                              "고쳐야 하는지 알려줘. 아직 재실행은 하지 마."),
+        "nudge_fail_why": "{n}번 연속으로 `{reason}` 실패했어.",
+        "nudge_provider_label": "⚠ {name} 응답 불가",
+        "nudge_provider_prompt": ("지금 선택된 제공자 `{name}` 가 준비 안 됐어: "
+                                  "{note}\n어떻게 고치는지, 그리고 지금 바로 쓸 수 "
+                                  "있는 제공자는 뭔지 알려줘."),
+        "nudge_provider_why": "`{name}` 가 선택돼 있는데 준비가 안 됐어 — {note}",
+        "nudge_d1_label": "지금 뭐가 열려 있지?",
+        "nudge_d1_msg": ("지금 상황을 보여줘: 열린 목표, 최근에 실패한 것, 그리고 "
+                         "네가 먼저 잡을 것 하나."),
+        "nudge_d2_label": "직전 작업 이어서",
+        "nudge_d2_msg": ("내가 가장 최근에 뭘 하고 있었고, 다음 구체적인 한 걸음은 "
+                         "뭐야? 답하기 전에 확인부터 해줘."),
+        "nudge_d3_label": "뭔가 이상한데 — 물어봐줘",
+        "nudge_d3_msg": ("뭔가 안 되는데 정확히 설명을 못 하겠어. 범위를 좁힐 수 있는 "
+                         "질문을 하나씩 나한테 물어봐줘."),
+        "nudge_push": "💡 *{label}*\n{why}",
+        "nudge_btn_go": "진행",
+        "nudge_btn_later": "나중에",
+        "nudge_btn_off": "그만 알림",
+        "nudge_taken": "💡 _{label}_\n",
+        "nudge_later_ok": "알겠어 — 접어뒀어. 쿨다운 지나면 다시 올라올 수 있어.",
+        "nudge_hushed": "🔕 `{k}` 껐어 — `!nudge on {k}` 로 되살릴 수 있어.",
+        "nudge_help": ("넛지 (오너) — 묻기 전에 Loki가 먼저 꺼내는 것들:\n"
+                       "• `!nudge` — 뭐가 켜져 있고 뭐가 마지막에 떴는지\n"
+                       "• `!nudge on` · `!nudge off` — 전체 켜기/끄기\n"
+                       "• `!nudge off <키>` · `!nudge on <키>` — 하나만\n"
+                       "• `!nudge now` — 지금 감시기를 돌려서 사실인 것만 보기"),
+        "nudge_on_ok": "🔔 넛지 켰어 — 뭔가 걸리면 내가 먼저 말할게.",
+        "nudge_off_ok": "🔕 넛지 껐어 — 먼저 말 거는 건 없어.",
+        "nudge_status": "🔔 넛지: *켜짐* · {min}분마다 확인",
+        "nudge_status_off": "🔕 넛지: *꺼짐* — `!nudge on` 으로 다시 켜.",
+        "nudge_live_header": "지금 걸린 것:",
+        "nudge_live_line": "• `{k}` — {why}",
+        "nudge_quiet_suffix": "_({h}시간 더 조용)_",
+        "nudge_silenced_header": "꺼둔 것:",
+        "nudge_nothing": "걸린 거 없어 — 묵은 목표 없고, 연속 실패 없고, "
+                         "제공자도 잘 답해.",
         "check_usage": ("체크할 항목을 줘 — `!check` 다음 한 줄에 하나씩 (또는 쉼표로 "
                         "구분). 첫 줄이 `:`로 끝나면 제목이 돼."),
         "check_owner_only": "체크리스트 생성은 오너만 할 수 있어.",

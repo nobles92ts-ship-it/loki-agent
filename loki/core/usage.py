@@ -56,6 +56,15 @@ def _read_rows() -> list[dict]:
     return rows
 
 
+def recent(n: int = 20) -> list[dict]:
+    """The last `n` rows, oldest first — what the nudge watchers read.
+
+    Order matters to them: "the last three runs all failed" is a claim about
+    the tail of the ledger, and rows are appended in time order.
+    """
+    return _read_rows()[-max(0, n):]
+
+
 def count_since(ts: float, org: str | None = None) -> int:
     """Calls recorded at or after `ts` — the whole install, or one org.
 

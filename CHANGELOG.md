@@ -1,5 +1,39 @@
 # Changelog
 
+## [v1.10.0] 2026-08-11
+
+Loki gets to open the conversation.
+
+### What you can do now
+
+- **The suggestion pane.** Open a thread with Loki in Slack and the blank composer is replaced by up to four things worth asking — live conditions first, then your open goals and their next undone step. Tap one and it runs. Guests see three generic openings and nothing about you.
+- **Nudges you didn't ask for.** Every 15 minutes Loki checks three things it already knows and speaks first when one becomes true: a goal untouched for three days, three runs failing the same way, or the selected provider unable to answer. Each alert carries buttons — run it, park it, or silence that one watcher.
+- **`!nudge`** — `on` · `off` · `now` · `off <key>`. The whole mechanism or one watcher; the pane keeps working either way.
+
+### Changes
+
+#### Features
+
+- `loki/core/nudge.py` — one `Nudge` shape, produced by `probe()`/`watch()` (push, cooldown-gated) and `suggest()` (pull, side-effect free). State in `state/nudges.json`.
+- `loki/platforms/slack/assistant.py` — `assistant_thread_started` → `assistant_threads.setSuggestedPrompts`, the three button actions, and the poll loop that DMs the owner.
+- Manifest: `assistant_view` feature, `assistant:write` scope, `assistant_thread_started` / `assistant_thread_context_changed` events. **An app installed before this release must have its manifest updated and be reinstalled before the pane appears** — the DM nudges work without it.
+- `LOKI_NUDGE`, `LOKI_NUDGE_POLL_MIN`, `LOKI_NUDGE_STALE_H` in `.env.example`.
+
+#### Behaviour
+
+- Goals now record `touched`, updated when a step is added or ticked. Without it "stale" would mean *old* rather than *abandoned*. Goals written before this release fall back to `created`, so nothing goes invisible on upgrade.
+- `usage.recent(n)` — the tail of the ledger in time order, which is what "the last three runs all failed" is a claim about.
+
+#### Fixes
+
+- `!nudge` status listed a tripped-and-cooling key twice — once as live, once as quiet — which read as a contradiction. Cooldown now rides on the condition's own line.
+
+### Notes
+
+Suggestions are owner-private: anyone can open an assistant thread with a bot they share a workspace with, and a goal title is a private note about your own work. Non-owners get the standing openings only.
+
+Nothing here decides to run anything. A nudge is an offer with a button on it.
+
 ## [v1.9.1] 2026-08-11
 
 The Google door moved while we were walking through it.
