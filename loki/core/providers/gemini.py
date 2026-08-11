@@ -1,11 +1,20 @@
-"""Gemini CLI — the flat-rate alternative, on a Google account rather than a key.
+"""Gemini CLI — now an API-key and enterprise path only.
 
-Two auth paths reach the same binary and they are not the same deal. Signing in
-with a Google account (``GOOGLE_GENAI_USE_GCA``) spends a plan — the free tier's
-daily allowance, or a Google AI subscription — while ``GEMINI_API_KEY`` bills
-per token. Loki defaults to the account path and strips inherited key variables
-so a stray ``GEMINI_API_KEY`` in the parent shell cannot quietly move a Slack
-workspace onto metered billing. ``GEMINI_AUTH=apikey`` opts in deliberately.
+⚠️ **The Google-account route through this binary is closed.** In June 2026
+Google stopped serving the Gemini CLI to individual accounts — the free tier
+*and* Google AI Pro/Ultra — and pointed everyone at Antigravity. Signing in
+still succeeds; the first request then fails with ``IneligibleTierError``, which
+the CLI reports as a crash with a stack trace. :func:`_ineligible` catches that
+shape so the reply says "closed door" rather than "unknown error", and
+:mod:`loki.core.providers.antigravity` is where a Google plan answers now.
+
+What still works here: ``GEMINI_API_KEY`` (AI Studio — a real free tier, metered
+above it) and an enterprise Code Assist licence. Loki still defaults to the
+account path, because that is the one an enterprise licence uses and it is not
+Loki's place to assume which kind of account this is; ``GEMINI_AUTH=apikey``
+switches deliberately. Inherited key variables are stripped either way, so a
+stray ``GEMINI_API_KEY`` in the parent shell cannot quietly move a Slack
+workspace onto metered billing.
 
 Three flags here are not decoration:
 
@@ -30,13 +39,13 @@ import shutil
 import uuid
 
 from .. import config
-from ..config import ANSI, log
+from ..config import log
 from . import base
 
 NAME = "gemini"
 LABEL = "Gemini CLI"
 SANDBOX = False         # no per-request deny rules → owner DM / console only
-PLAN = "Google account (free tier or Google AI subscription)"
+PLAN = "API key or enterprise licence — individual accounts closed June 2026"
 
 _STRIP_PREFIXES = ("GEMINI_", "GOOGLE_GENAI_")
 _STRIP_EXACT = {"GOOGLE_API_KEY"}

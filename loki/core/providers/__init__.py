@@ -37,7 +37,7 @@ import threading
 
 from .. import config
 from ..config import log
-from . import base, claude, codex, gemini, groq, kimi
+from . import antigravity, base, claude, codex, gemini, groq, kimi
 
 # One probe per CLI per process. `!provider` and `doctor` ask every provider
 # for its version *and* its readiness, and each answer is a node process — left
@@ -45,7 +45,7 @@ from . import base, claude, codex, gemini, groq, kimi
 _versions: dict[str, str] = {}
 
 # Order matters only for display — `!provider` lists them in this order.
-ALL = {m.NAME: m for m in (claude, gemini, codex, kimi, groq)}
+ALL = {m.NAME: m for m in (claude, antigravity, codex, kimi, gemini, groq)}
 DEFAULT = claude.NAME
 FALLBACK = claude                       # the provider that can hold a sandbox
 

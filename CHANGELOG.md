@@ -1,5 +1,33 @@
 # Changelog
 
+## [v1.9.1] 2026-08-11
+
+The Google door moved while we were walking through it.
+
+### What you can do now
+
+- **`!provider antigravity`** — a Google AI Pro/Ultra plan (or the free tier) answering through Google's `agy` CLI. Verified end to end: Gemini 3.6 Flash, with conversation continuity across turns.
+
+### Changes
+
+#### Features
+
+- **`antigravity` provider.** Google stopped serving the Gemini CLI to individual accounts in June 2026 — the free tier *and* Google AI Pro/Ultra — and named Antigravity the successor. That took the whole flat-rate Google path out of v1.9.0 the day it shipped, so here it is again through the CLI that still has it.
+
+  Every shape was taken from the running binary rather than the docs. The prompt goes on **stdin with no `-p`** — ⚠️ `-p -` looks like the usual stdin idiom and isn't: `agy` takes the `-` as the literal prompt, answers it, and discards stdin, so the question is silently replaced by a greeting. `--output-format json` returns one object on stdout for success *and* failure. `--conversation <id>` resumes, and a **dead id is not an error**: the CLI warns and starts a fresh conversation with a new id, so there is no retry path here — only the discipline of storing whatever came back.
+
+  `--print-timeout` is pinned to Loki's own `TIMEOUT_SEC`; left at its 5-minute default it would cut a long job short or outlive one Loki had already given up on. The binary is also looked for in `%LOCALAPPDATA%\agy\bin` — the installer adds that to the PATH *registry*, which a process that was already running (the worker) does not see until it restarts, so without the fallback installing `agy` appears to do nothing.
+
+#### Fixes
+
+- **A closed door arrived as a stack trace.** The Gemini CLI reports the tier cutoff as an uncaught `IneligibleTierError` with a screenful of node frames, and Loki relayed all of it — which reads like a bug in Loki and buries the one sentence saying that signing in again will not help. Named now, with the settings that still work. Raw failures generally are trimmed: when a provider fails outside its own JSON envelope the raw stream is all there is, and for a node CLI that is mostly `at process.processTicksAndRejections`.
+
+- **Tests read the machine's own provider setting.** `state/provider.json` holds the choice this install is actually running under, and a `!provider gemini` left behind by a live smoke rerouted every spawn in tests that never mentioned a provider — surfacing as `test_account` failing its assertions about `CLAUDE_CONFIG_DIR`, nowhere near the cause. An autouse fixture now isolates it.
+
+#### Docs
+
+- README (en/ko) and `.env.example`: `gemini` is relabelled honestly — API key or enterprise Code Assist licence, individual accounts closed — and `antigravity` documented as the flat-rate Google path, with its one-line installer.
+
 ## [v1.9.0] 2026-08-11
 
 Loki stops assuming there is one agent, and starts having something to work toward.

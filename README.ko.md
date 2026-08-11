@@ -125,10 +125,13 @@ Loki의 전제는 원래부터 Claude 전용이 아니었다: **가장 싼 에�
 | | 에이전트 | 무엇을 쓰나 |
 |---|---|---|
 | `claude` | Claude Code | Claude Pro/Max 구독 — 정액 *(기본값)* |
-| `gemini` | Gemini CLI | 구글 계정 — 무료 티어 또는 Google AI 요금제 |
+| `antigravity` | Antigravity CLI (`agy`) | Google AI Pro/Ultra 또는 무료 티어 — 정액 |
 | `codex` | Codex CLI | ChatGPT Plus/Pro 요금제(로그인 — API 키 **아님**) |
 | `kimi` | Claude Code → Moonshot | Kimi 코딩 플랜이면 정액, 플랫폼 키면 종량 |
+| `gemini` | Gemini CLI | API 키 또는 기업용 Code Assist 라이선스 — 아래 참조 |
 | `groq` | Groq 엔드포인트 | 무료 티어 — 종량이 아니라 rate 제한. **도구 없음:** 파일을 읽거나 명령을 실행하지 못하고 대화만 된다 |
+
+⚠️ **Gemini CLI는 개인 계정에 닫혔다.** 2026년 6월 구글이 무료 티어는 물론 **Google AI Pro/Ultra 까지** 개인 계정 요청을 끊고 [Antigravity](https://antigravity.google/docs/cli/install)를 후속으로 지정했다. 로그인은 여전히 성공하고 **첫 요청에서** `IneligibleTierError` 로 실패한다 — Loki는 그걸 스택트레이스 대신 사람 말로 알려준다. 구글 요금제가 있으면 `antigravity` 를 쓰고, `gemini` 는 API 키나 기업 라이선스용으로 남는다.
 
 ```
 !provider            # 지금 누가 답하는지, 나머지는 뭐가 더 필요한지
@@ -208,7 +211,7 @@ Loki의 전제는 원래부터 Claude 전용이 아니었다: **가장 싼 에�
 | `!budget …` / `!예산 …` | DM | [사용량 예산](#예산--구독을-지키는-상한): 한도·모드·완화 조치 |
 | `!exit` / `!종료` | 스레드 / 채널 | 여기서 **봇끼리** 대화 끝내기 — 다른 봇만 안 듣고 **사람은 그대로**. `undo`로 되돌리고 `list`로 확인. [Loki 둘이 대화](#loki-둘이-대화) 참조 |
 | `!account [on\|off]` / `!계정` | DM | 스폰이 어느 Claude 계정으로 도는지 — 고정 토큰 vs config 디렉토리 로그인. [계정이 둘일 때](#계정이-둘일-때--어느-쪽이-쓰게-할지-전환) |
-| `!provider [이름]` / `!제공자` / `!모델` | DM | 어느 에이전트가 답할지: `claude` `gemini` `codex` `kimi` `groq`. [제공자](#제공자--어느-에이전트가-답할지) 참조 |
+| `!provider [이름]` / `!제공자` / `!모델` | DM | 어느 에이전트가 답할지: `claude` `antigravity` `codex` `kimi` `gemini` `groq`. [제공자](#제공자--어느-에이전트가-답할지) 참조 |
 | `!goal …` / `!목표 …` | 어디서든 | 이 대화가 향하는 지속 목표: `<제목>` `list` `show g1` `step g1 <단계>` `done g1` `drop g1`. [목표](#목표--답변-하나보다-오래-사는-것) 참조 |
 | `!bot …` / `!봇 …` | 어디서든 | [봇 트리거](#봇-트리거--알림이-loki를-깨우게-하기) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 

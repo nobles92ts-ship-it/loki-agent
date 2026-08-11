@@ -124,10 +124,13 @@ Loki's premise was never Claude-specific: the cheapest agent to run is **the one
 | | agent | what it spends |
 |---|---|---|
 | `claude` | Claude Code | Claude Pro/Max subscription — flat *(default)* |
-| `gemini` | Gemini CLI | Google account — free tier, or a Google AI plan |
+| `antigravity` | Antigravity CLI (`agy`) | Google AI Pro/Ultra, or the free tier — flat |
 | `codex` | Codex CLI | ChatGPT Plus/Pro plan (signed in — **not** an API key) |
 | `kimi` | Claude Code → Moonshot | flat on a Kimi coding plan, metered on a platform key |
+| `gemini` | Gemini CLI | API key, or an enterprise Code Assist licence — see below |
 | `groq` | Groq endpoint | free tier — rate-limited rather than metered. **No tools:** it can't read a file or run a command, only talk |
+
+⚠️ **Gemini CLI is closed to individual accounts.** In June 2026 Google stopped serving it to the free tier *and* Google AI Pro/Ultra, and named [Antigravity](https://antigravity.google/docs/cli/install) the successor. Signing in still succeeds and the first request then fails with `IneligibleTierError` — Loki names that rather than relaying the stack trace. If you have a Google plan, use `antigravity`; `gemini` remains for an API key or an enterprise licence.
 
 ```
 !provider            # who answers now, and what the others still need
@@ -206,7 +209,7 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!budget …` | DM | [usage budgets](#budgets--caps-that-protect-your-subscription): caps, mode, and mitigations |
 | `!exit` | thread / channel | end a **bot-to-bot** exchange here — other bots stop being heard, people carry on untouched. `undo` to reverse, `list` to see where. See [two Lokis](#two-lokis-talking) |
 | `!account [on\|off]` | DM | which Claude account spawns run as — the pinned token, or the config dir's own login. See [two accounts](#two-accounts--switching-which-one-spends) |
-| `!provider [name]` | DM | which agent answers: `claude` `gemini` `codex` `kimi` `groq`. See [providers](#providers--which-agent-answers) |
+| `!provider [name]` | DM | which agent answers: `claude` `antigravity` `codex` `kimi` `gemini` `groq`. See [providers](#providers--which-agent-answers) |
 | `!goal …` | anywhere | a standing objective this conversation works toward: `<title>` `list` `show g1` `step g1 <next>` `done g1` `drop g1`. See [goals](#goals--an-objective-that-outlives-a-turn) |
 | `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
