@@ -1,5 +1,47 @@
 # Changelog
 
+## [v1.9.0] 2026-08-11
+
+Loki stops assuming there is one agent, and starts having something to work toward.
+
+### What you can do now
+
+- **`loki` is a word you can type.** `python -m loki cli install` puts a launcher on PATH; after that `loki chat` opens the terminal console from any directory, with no venv to activate.
+- **Pick which agent answers** — `!provider gemini`, `codex`, `kimi`, `groq`, or `claude`. Each one spawns a CLI already signed in on this machine, so the bill stays on a plan you already pay for rather than a per-token key.
+- **`!goal <what you want>`** — an objective that outlives a single answer. It keeps its own steps and rides along in that conversation's context until you close it.
+
+### Changes
+
+#### Features
+
+- **`loki/core/providers/` — one module per agent, and one rule above the choice.** Loki's premise was never Claude-specific: the cheapest agent to run is the one already logged in on this machine. A ChatGPT plan drives `codex`, a Google account drives `gemini`, and both were sitting on the same disk. Each provider maps Loki's contract — prompt, resume id, permission mode → `{text, session_id, error, reason}` — onto its own CLI.
+
+  **The rule that overrides the switch:** Loki's guest scope and its permission-file guard are Claude Code deny rules, carried as a per-request settings file the tool layer enforces. Only a provider that can hold one may serve a request that needs one, so **every guest request, and every request you make outside your own DM, runs on Claude no matter what is selected**. A provider switch must not be able to quietly widen what a stranger can read. Your own DM and the terminal console follow the switch.
+
+  Sessions are filed **per provider**, because a session id is a receipt from one agent's store and handing Gemini's to Claude's `--resume` fails. Switching therefore keeps both conversations instead of dropping one — unlike `!account`, where the same thread would replay under a different login and has to be cleared. Session state written before this version is adopted as Claude's rather than discarded.
+
+- **`!goal` / `!목표` — the objective that outlives a turn.** Everything else in Loki is turn-shaped: a message arrives, an agent answers, and the next message starts from whatever the transcript still holds. A goal is the missing noun — it keeps steps, it is injected into that conversation's prompt on every turn as delimited context (not as an instruction that outranks the request), and it stays until closed. Deliberately *not* autonomous: a goal shapes the next turn you take, it does not take turns by itself. `!schedule` already exists for work that should fire on a clock.
+
+- **`python -m loki cli install`** writes `loki.cmd` and `loki` into a PATH directory, pinning the venv interpreter and the repo directory at install time — the two pieces of ambient state that do not survive a cold terminal. A launcher, not a copy, so pulling the repo updates the command.
+
+- **The boot self-test is keyed by provider as well as version.** Each agent spells read-only differently — `--permission-mode plan`, `--approval-mode plan`, `sandbox_mode="read-only"` — so a pass proves one mapping, not the idea. Switching providers re-runs it, which is exactly the moment the guarantee is resting on a flag nobody has tried yet. `doctor` now lists every provider and what each still needs.
+
+#### Fixes
+
+- **Gemini is refused before the spawn when nobody is signed in.** Unauthenticated, the CLI starts its *interactive* OAuth flow — which reads stdin, and stdin is where Loki puts the prompt. Observed live: the question was swallowed by the login prompt, the login was then cancelled by the same EOF, and the CLI answered "No input provided via stdin" after burning a spawn. On a worker with no console it can sit there until the timeout instead.
+
+- **`--skip-trust` on every Gemini spawn.** An untrusted folder silently downgrades `--approval-mode` back to "ask a human", which in a headless spawn means hang until the timeout. The CLI says so on stderr and carries on.
+
+- **Gemini's JSON envelope is read from stderr too.** A successful run prints it on stdout and a failed one on stderr; reading only stdout turns every real error into "(empty response)". Prose printed beside it — "YOLO mode is enabled." — is skipped rather than parsed.
+
+- **`claude.available()` returned its failure note alongside a healthy result**, so `!provider` showed a permanent ⚠️ next to the provider that was working fine.
+
+- **`private/tests/` fixture pinned to a directory retired in July.** It still monkeypatched `_RUNS_DIR`, which stopped existing when tc-team's output moved under `specs/<기능명>/`; five tests had been failing since.
+
+#### Docs
+
+- `.env.example`: every provider, which auth path is flat and which is metered for each, and the sandbox rule that overrides the switch. `ANTHROPIC_*`, `GEMINI_API_KEY` and `OPENAI_API_KEY` inherited from a parent shell are stripped per provider — a key left in the environment is the one way to move a whole workspace onto per-token billing without noticing.
+
 ## [v1.8.3] 2026-08-09
 
 A stop button for the one conversation nobody was ending.

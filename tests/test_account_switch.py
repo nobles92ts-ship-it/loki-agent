@@ -7,6 +7,7 @@ the token itself — `on` has to have something to go back to.
 import pytest
 
 from loki.core import account, brain, commands, config, sessions
+from loki.core.providers import base
 
 
 @pytest.fixture
@@ -35,7 +36,7 @@ def _spawn_env(monkeypatch) -> dict:
         captured["env"] = kw.get("env", {})
         return _FakeProc()
 
-    monkeypatch.setattr(brain.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(base.subprocess, "Popen", fake_popen)
     brain.run_claude("hi", None)
     return captured["env"]
 

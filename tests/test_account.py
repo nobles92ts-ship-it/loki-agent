@@ -1,6 +1,7 @@
 """Dedicated-account passthrough — CLAUDE_CONFIG_DIR reaches the spawned claude,
 and the parent's Claude auth env is stripped."""
 from loki.core import brain, config
+from loki.core.providers import base
 
 
 class _FakeProc:
@@ -23,7 +24,7 @@ def test_config_dir_injected_and_auth_stripped(monkeypatch):
         captured["env"] = kw.get("env", {})
         return _FakeProc()
 
-    monkeypatch.setattr(brain.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(base.subprocess, "Popen", fake_popen)
     brain.run_claude("hi", None)
 
     env = captured["env"]
@@ -40,6 +41,6 @@ def test_no_config_dir_when_unset(monkeypatch):
         captured["env"] = kw.get("env", {})
         return _FakeProc()
 
-    monkeypatch.setattr(brain.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(base.subprocess, "Popen", fake_popen)
     brain.run_claude("hi", None)
     assert "CLAUDE_CONFIG_DIR" not in captured["env"]

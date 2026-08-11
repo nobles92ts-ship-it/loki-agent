@@ -207,7 +207,8 @@ def _handle(job: dict) -> None:
         kind = "kind_channel" if context else "kind_thread"
         prompt = build_prompt(context, job["text"], kind,
                               t("scope_channel", d=1, n=CTX_MESSAGES)
-                              if context else "")
+                              if context else "",
+                              session_key=job.get("session_key"))
         if job.get("doc_paths"):
             prompt = t("file_note", n=len(job["doc_paths"]),
                        paths="\n".join(f"- {p}" for p in job["doc_paths"])) + prompt

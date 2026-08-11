@@ -3,6 +3,8 @@
     python -m loki                 run the worker (platform from LOKI_PLATFORM)
     python -m loki slack|discord|telegram
                                    run the worker on that platform
+    python -m loki chat            talk to the agent from this terminal
+    python -m loki cli install     put `loki` on PATH, then just `loki chat`
     python -m loki status          is the worker up right now?
     python -m loki doctor          full install check + liveness
     python -m loki gateway …       install | uninstall | ensure | stop | restart
@@ -19,10 +21,13 @@ from loki.core import config
 
 PLATFORMS = ("slack", "discord", "telegram")
 GATEWAY_SUBS = ("install", "uninstall", "ensure", "stop", "restart", "status")
+CLI_SUBS = ("install", "uninstall", "status")
 
 USAGE = f"""usage: python -m loki [command]
 
   (none) | {' | '.join(PLATFORMS):<18}run the worker
+  {'chat':<27}talk to the agent from this terminal
+  {'cli <sub>':<27}{' | '.join(CLI_SUBS)} — put `loki` on PATH
   {'status':<27}is the worker up right now?
   {'doctor':<27}full install check + liveness
   {'gateway <sub>':<27}{' | '.join(GATEWAY_SUBS)}
@@ -57,6 +62,16 @@ def _gateway(argv: list[str]) -> int:
     return getattr(gateway, sub)()
 
 
+def _cli(argv: list[str]) -> int:
+    from loki.core import clishim
+    sub = (argv[0] if argv else "status").lower()
+    if sub not in CLI_SUBS:
+        print(f"usage: python -m loki cli <{' | '.join(CLI_SUBS)}>",
+              file=sys.stderr)
+        return 2
+    return getattr(clishim, sub)()
+
+
 def main() -> None:
     argv = sys.argv[1:]
     cmd = (argv[0].lower() if argv
@@ -65,6 +80,11 @@ def main() -> None:
     if cmd in ("-h", "--help", "help"):
         print(USAGE)
         sys.exit(0)
+    if cmd == "chat":
+        from loki.core import console
+        sys.exit(console.run())
+    if cmd == "cli":
+        sys.exit(_cli(argv[1:]))
     if cmd == "status":
         from loki.core import diagnostics
         sys.exit(diagnostics.status())

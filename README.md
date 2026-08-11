@@ -117,6 +117,43 @@ The token in `.env` is never written to or cleared, so `on` always has something
 
 Nothing changes for installs that never touch it — unset is on. `doctor` reports the switch, and stops probing a pin nothing is running under.
 
+### Providers — which agent answers
+
+Loki's premise was never Claude-specific: the cheapest agent to run is **the one already signed in on this machine**. A ChatGPT plan drives `codex`, a Google account drives `gemini`, and both are usually sitting on the same disk as `claude`. So which one answers is a setting.
+
+| | agent | what it spends |
+|---|---|---|
+| `claude` | Claude Code | Claude Pro/Max subscription — flat *(default)* |
+| `gemini` | Gemini CLI | Google account — free tier, or a Google AI plan |
+| `codex` | Codex CLI | ChatGPT Plus/Pro plan (signed in — **not** an API key) |
+| `kimi` | Claude Code → Moonshot | flat on a Kimi coding plan, metered on a platform key |
+| `groq` | Groq endpoint | free tier — rate-limited rather than metered. **No tools:** it can't read a file or run a command, only talk |
+
+```
+!provider            # who answers now, and what the others still need
+!provider gemini     # switch
+```
+
+**One rule overrides the choice.** Loki's [guest allowlist](#the-guest-allowlist-lokimd) and its permission-file guard are Claude Code deny rules, carried as a per-request settings file the tool layer enforces — and no other CLI can carry one. So **every guest request, and every request you make outside your own DM, runs on Claude whatever is selected**. Your own DM and `loki chat` follow the switch. A provider switch must not be able to quietly widen what a stranger can read.
+
+Conversations are remembered **per provider**, because a session id is a receipt from one agent's store — hand Gemini's to Claude's `--resume` and it fails. So switching keeps both threads rather than dropping one, and flipping back finds yours where you left it. (That is the opposite of `!account`, where the same conversation would replay under a different login and *has* to be cleared.)
+
+Auth inherited from the environment is stripped per provider before each spawn. This matters more than it sounds: an `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` left in the parent shell moves the whole workspace onto per-token billing with no error and no visible difference in the reply. Set the ones you mean in `.env` — see [.env.example](.env.example).
+
+### Goals — an objective that outlives a turn
+
+Everything else here is turn-shaped: a message arrives, an agent answers, and the next message starts from whatever the transcript still holds. A goal is the missing noun.
+
+```
+!goal get the navmesh run green
+!goal step g1 rerun level 3
+!goal list · !goal show g1 · !goal done g1 [note] · !goal drop g1
+```
+
+An open goal rides along in that conversation's prompt on every turn, as its own delimited block — framed as context, not as an instruction that outranks what you actually asked. It stays until you close it, so a long piece of work stops depending on the session still being warm.
+
+Three deliberate limits. **Goals never act on their own** — a goal shapes the next turn *you* take; `!schedule` already exists for work that should fire on a clock, and autonomy without a supervisor is how a subscription evaporates overnight. **Steps are notes, not a plan the code executes** — they give a long objective a written spine both you and the model can read on turn twenty. And **they are yours**: `!goal` is owner-only, and a goal only rides along in the conversation it was opened in.
+
 ## Permissions — who can do what
 
 Two built-in tiers, cleanly separated:
@@ -169,6 +206,8 @@ Resolution per request: **owner → explicit member → bound channel → unaffi
 | `!budget …` | DM | [usage budgets](#budgets--caps-that-protect-your-subscription): caps, mode, and mitigations |
 | `!exit` | thread / channel | end a **bot-to-bot** exchange here — other bots stop being heard, people carry on untouched. `undo` to reverse, `list` to see where. See [two Lokis](#two-lokis-talking) |
 | `!account [on\|off]` | DM | which Claude account spawns run as — the pinned token, or the config dir's own login. See [two accounts](#two-accounts--switching-which-one-spends) |
+| `!provider [name]` | DM | which agent answers: `claude` `gemini` `codex` `kimi` `groq`. See [providers](#providers--which-agent-answers) |
+| `!goal …` | anywhere | a standing objective this conversation works toward: `<title>` `list` `show g1` `step g1 <next>` `done g1` `drop g1`. See [goals](#goals--an-objective-that-outlives-a-turn) |
 | `!bot …` | anywhere | [bot triggers](#bot-triggers--let-an-alert-wake-loki) (Slack): `seen` `allow <B…>` `deny <B…>` `list` |
 | `!check <items>` | anywhere | post a [shared checklist](#checklists) — one item per line (or comma-separated); a first line ending in `:` is the title. Tap ☐/☑ to toggle (synced for everyone), or say `done N`. Owner creates; anyone who sees it can toggle |
 
@@ -314,6 +353,19 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 - Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
 - **Drop a screenshot** in your DM (caption optional) and Loki reads it and analyzes it. If a reply produces a local file (report, chart), Loki attaches it. (owner DMs)
 - Replies **render as chat formatting** — on Slack, Claude's Markdown is converted to mrkdwn; Discord renders Markdown natively.
+
+### The terminal console
+
+The worker carries a chat platform's messages to the agent on this machine. The console is that same path with the transport removed — stdin in, the answer out, the `!` vocabulary in between — for when trying a plugin or a budget change shouldn't mean posting into Slack and waiting for the round trip.
+
+```bash
+python -m loki cli install       # put `loki` on PATH (once)
+loki chat                        # then, from any directory
+```
+
+The launcher pins the venv interpreter and the repo directory at install time, so there is nothing to activate and nowhere in particular to stand. It's a three-line launcher rather than a copy, so pulling the repo updates the command.
+
+Whoever is typing here is the owner, unconditionally: guests are a permission model for a *remote* audience, and anyone at this keyboard already has a shell on the machine Loki would act on. The console keeps its own session key, so a terminal conversation never resumes — and so never derails — the one running in your DM. Ctrl-C cancels a turn; `exit` or Ctrl-D leaves.
 
 ### Keeping it running
 

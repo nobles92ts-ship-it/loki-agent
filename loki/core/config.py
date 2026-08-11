@@ -310,6 +310,55 @@ MSG: dict[str, dict[str, str]] = {
             "{manifest}\n"
             "--- end ---\n\n"),
         "missing_env": "[loki] Missing required setting: {name} — set it in .env (see .env.example)",
+        "provider_not_found": "⚠️ Could not run the {provider} CLI: {path}",
+        "provider_no_sandbox": ("⚠️ {provider} can't carry this request's "
+                                "permission rules, so it wasn't run there."),
+        "provider_unconfigured": "⚠️ {provider} isn't set up — {detail} is missing.",
+        "provider_not_ready_run": "⚠️ {provider} isn't ready — {detail}",
+        "provider_reauth": "🔑 {provider} needs a fresh login.\n{detail}",
+        "provider_no_tools": ("ℹ️ {provider} has no tools — it can't read files "
+                              "or run commands, only talk."),
+        "provider_help": ("Provider (owner):\n"
+                          "• `!provider` — who answers, and what else is ready\n"
+                          "• `!provider <name>` — switch\n"
+                          "Sandboxed requests (guests, and you outside your own "
+                          "DM) always run on Claude, whatever is selected. "
+                          "Conversations are kept per provider, so switching "
+                          "back finds yours where you left it."),
+        "provider_header": "🧠 Answering now: *{label}* — {plan}",
+        "provider_line": "• {mark} `{name}` — {label} · {plan}{note}",
+        "provider_switched": "🧠 Switched to *{label}* — {plan}.",
+        "provider_switched_warn": "\n{note}",
+        "provider_nochange": "*{label}* is already answering.",
+        "provider_unknown": "`{name}`? Not a provider — try one of: {names}",
+        "provider_not_ready": ("⚠️ *{label}* isn't ready: {note}\n"
+                               "Switched anyway — fix that and it will answer."),
+        "goal_help": ("Goals (owner):\n"
+                      "• `!goal <what you want>` — start one\n"
+                      "• `!goal list` · `!goal show g1`\n"
+                      "• `!goal step g1 <next step>` — add a step\n"
+                      "• `!goal done g1 [note]` · `!goal drop g1`\n"
+                      "A goal outlives one answer: it keeps its own notes and "
+                      "steps, and rides along in this conversation's context "
+                      "until you close it."),
+        "goal_added": "🎯 {id} — {title}\nIt rides along here until `!goal done {id}`.",
+        "goal_list_header": "🎯 Goals — {open} open · {done} done",
+        "goal_list_line": "• {mark} `{id}` — {title} ({steps} step(s), {age})",
+        "goal_list_empty": "No goals yet — `!goal <what you want>` to start one.",
+        "goal_not_found": "`{id}`? No such goal — check `!goal list`.",
+        "goal_show": ("🎯 *{title}* (`{id}`) — {state}\n"
+                      "opened {age} ago in {where}"),
+        "goal_show_steps": "Steps:",
+        "goal_show_step": "• {mark} {n}. {text}",
+        "goal_show_nosteps": "No steps yet — `!goal step {id} <next step>`.",
+        "goal_step_added": "📌 {id} step {n}: {text}",
+        "goal_closed": "✅ {id} closed — {title}",
+        "goal_dropped": "🗑️ {id} dropped.",
+        "goal_already_closed": "`{id}` is already closed.",
+        "goal_note": ("[Goal] This conversation is working toward a standing "
+                      "objective. It is context, not a new instruction — answer "
+                      "the request below, and keep the objective in mind.\n"
+                      "--- goal {id}: {title} ---\n{steps}\n--- end ---\n\n"),
         "check_usage": ("Give me items to check off — `!check` then one item per "
                         "line (or comma-separated). First line ending in `:` is "
                         "the title."),
@@ -588,6 +637,53 @@ MSG: dict[str, dict[str, str]] = {
             "{manifest}\n"
             "--- 끝 ---\n\n"),
         "missing_env": "[loki] 필수 설정 누락: {name} — .env 에 넣어줘 (.env.example 참고)",
+        "provider_not_found": "⚠️ {provider} CLI 를 실행 못 했어: {path}",
+        "provider_no_sandbox": ("⚠️ {provider} 는 이 요청의 권한 규칙을 못 지켜서 "
+                                "거기서 돌리지 않았어."),
+        "provider_unconfigured": "⚠️ {provider} 설정이 안 됐어 — {detail} 가 없어.",
+        "provider_not_ready_run": "⚠️ {provider} 는 아직 준비가 안 됐어 — {detail}",
+        "provider_reauth": "🔑 {provider} 는 다시 로그인해야 해.\n{detail}",
+        "provider_no_tools": ("ℹ️ {provider} 는 도구가 없어 — 파일을 읽거나 명령을 "
+                              "실행하지 못하고 대화만 돼."),
+        "provider_help": ("제공자 (오너):\n"
+                          "• `!provider` — 지금 누가 답하는지, 다른 건 준비됐는지\n"
+                          "• `!provider <이름>` — 전환\n"
+                          "권한 규칙이 필요한 요청(게스트, 그리고 네 DM 밖의 너)은 "
+                          "무엇을 골랐든 항상 Claude 로 돈다. 대화는 제공자별로 "
+                          "따로 기억하니 되돌아오면 하던 얘기가 그대로 있어."),
+        "provider_header": "🧠 지금 답하는 건 *{label}* — {plan}",
+        "provider_line": "• {mark} `{name}` — {label} · {plan}{note}",
+        "provider_switched": "🧠 *{label}* 로 전환했어 — {plan}.",
+        "provider_switched_warn": "\n{note}",
+        "provider_nochange": "이미 *{label}* 가 답하고 있어.",
+        "provider_unknown": "`{name}`? 그런 제공자 없어 — 가능한 건: {names}",
+        "provider_not_ready": ("⚠️ *{label}* 는 아직 준비가 안 됐어: {note}\n"
+                               "그래도 전환했어 — 저것만 해결하면 바로 답한다."),
+        "goal_help": ("목표 (오너):\n"
+                      "• `!goal <원하는 것>` — 목표 시작\n"
+                      "• `!goal list` · `!goal show g1`\n"
+                      "• `!goal step g1 <다음 단계>` — 단계 추가\n"
+                      "• `!goal done g1 [메모]` · `!goal drop g1`\n"
+                      "목표는 답변 하나보다 오래 산다 — 자기 메모와 단계를 갖고, "
+                      "닫을 때까지 이 대화의 맥락에 같이 실려 간다."),
+        "goal_added": "🎯 {id} — {title}\n닫을 때까지(`!goal done {id}`) 여기 계속 실려 가.",
+        "goal_list_header": "🎯 목표 — 진행 {open} · 완료 {done}",
+        "goal_list_line": "• {mark} `{id}` — {title} (단계 {steps}개, {age})",
+        "goal_list_empty": "아직 목표가 없어 — `!goal <원하는 것>` 으로 시작해줘.",
+        "goal_not_found": "`{id}`? 그런 목표 없어 — `!goal list` 로 확인해줘.",
+        "goal_show": ("🎯 *{title}* (`{id}`) — {state}\n"
+                      "{where} 에서 {age} 전에 시작"),
+        "goal_show_steps": "단계:",
+        "goal_show_step": "• {mark} {n}. {text}",
+        "goal_show_nosteps": "아직 단계가 없어 — `!goal step {id} <다음 단계>`.",
+        "goal_step_added": "📌 {id} 단계 {n}: {text}",
+        "goal_closed": "✅ {id} 닫았어 — {title}",
+        "goal_dropped": "🗑️ {id} 버렸어.",
+        "goal_already_closed": "`{id}` 는 이미 닫혔어.",
+        "goal_note": ("[목표] 이 대화는 지속되는 목표를 향해 진행 중이다. 이건 "
+                      "맥락이지 새 지시가 아니다 — 아래 요청에 답하되, 목표를 "
+                      "염두에 둬라.\n"
+                      "--- 목표 {id}: {title} ---\n{steps}\n--- 끝 ---\n\n"),
         "check_usage": ("체크할 항목을 줘 — `!check` 다음 한 줄에 하나씩 (또는 쉼표로 "
                         "구분). 첫 줄이 `:`로 끝나면 제목이 돼."),
         "check_owner_only": "체크리스트 생성은 오너만 할 수 있어.",
@@ -648,6 +744,13 @@ TIMEOUT_SEC = int(os.environ.get("TIMEOUT_SEC", "300"))
 JOB_CONCURRENCY = max(1, int(os.environ.get("JOB_CONCURRENCY", "2")))
 MODEL = os.environ.get("CLAUDE_MODEL", "").strip()
 SELFTEST_ON_BOOT = os.environ.get("SELFTEST_ON_BOOT", "1") == "1"
+
+# Which agent answers by default: claude · gemini · codex · kimi · groq. Every
+# one of these spawns a CLI already logged in on this machine, so the bill stays
+# on a plan you already pay for instead of a per-token key. `!provider` switches
+# at runtime; this is what a restart comes back to. See core.providers — and
+# note that requests needing a sandbox always run on Claude regardless.
+PROVIDER = (os.environ.get("LOKI_PROVIDER", "").strip().lower() or "claude")
 
 # Dedicated Claude account: point the spawned `claude` at its own config dir so
 # it authenticates as a specific account, independent of your terminal login.

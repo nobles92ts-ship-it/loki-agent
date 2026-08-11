@@ -1,6 +1,7 @@
 # secrets & local runtime — never commit
 .env
 state/
+_no_sync/
 venv/
 __pycache__/
 .code-review-graph/
