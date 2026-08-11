@@ -540,6 +540,9 @@ def on_message(body, event, logger):
     if event.get("channel_type") == "im":     # DMs → owner conversation
         _dispatch(body, event, is_mention=False)
         return
+    # Getting here at all proves the app is subscribed to message.channels /
+    # message.groups — which is what `!listen` needs and cannot otherwise check.
+    autolisten.note_channel_event()
     # Channel/group message: engage only inside a registered auto-listen zone,
     # and never for @mentions (those arrive via app_mention → no double-handling).
     if BOT_USER_ID and f"<@{BOT_USER_ID}>" in (event.get("text") or ""):

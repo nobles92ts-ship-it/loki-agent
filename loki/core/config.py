@@ -269,6 +269,11 @@ MSG: dict[str, dict[str, str]] = {
         "listen_already": "Already auto-listening here.",
         "unlisten_ok": "🔇 Stopped auto-listening here — mention me again to talk.",
         "unlisten_none": "I'm not auto-listening here.",
+        "listen_no_events": ("⚠️ Heads up: no channel message has ever reached this "
+                             "install, so a zone here may never fire. Auto-listen needs "
+                             "the `message.channels` / `message.groups` bot events — "
+                             "check your Slack app's Event Subscriptions. "
+                             "(`@mention` and DMs work regardless.)"),
         "listening_none": "Not auto-listening anywhere. Say `!listen` in a thread or channel to start.",
         "listening_header": "🎧 Auto-listening — {c} channel(s) · {t} thread(s):",
         "org_help": ("Org commands (owner):\n"
@@ -658,6 +663,11 @@ MSG: dict[str, dict[str, str]] = {
         "listen_already": "여긴 이미 자동청취 중이야.",
         "unlisten_ok": "🔇 여기 자동청취 해제했어 — 다시 부르려면 멘션해줘.",
         "unlisten_none": "여긴 자동청취 중이 아니야.",
+        "listen_no_events": ("⚠️ 참고: 이 설치는 채널 메시지를 한 번도 받은 적이 없어서, "
+                             "여기 존을 걸어도 안 울릴 수 있어. 자동청취는 "
+                             "`message.channels` / `message.groups` 봇 이벤트가 필요해 — "
+                             "Slack 앱의 Event Subscriptions 확인해줘. "
+                             "(`@멘션`과 DM은 이것과 무관하게 동작해.)"),
         "listening_none": "자동청취 중인 곳이 없어. 스레드나 채널에서 `!listen` 해줘.",
         "listening_header": "🎧 자동청취 중 — 채널 {c}개 · 스레드 {t}개:",
         "org_help": ("조직 명령 (오너):\n"
