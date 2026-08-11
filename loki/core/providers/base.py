@@ -136,6 +136,28 @@ def spawn(cmd: list[str], prompt: str, cwd: str | None,
     return out or "", err or "", proc.returncode, False
 
 
+def trim(text: str, limit: int = 400) -> str:
+    """A CLI's raw failure, cut down to the part a person can act on.
+
+    When a provider fails outside its own JSON envelope there is nothing to
+    parse and the raw stream is all we have — which for a node CLI means the
+    message followed by a screenful of ``at process.processTicksAndRejections``.
+    Relaying that whole thing into a chat window buries the one sentence that
+    said what went wrong. Stack frames go, the message stays.
+    """
+    lines = []
+    for raw in ANSI.sub("", text or "").splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("at ") or stripped.startswith("^"):
+            continue                    # a stack frame, or a caret pointing at one
+        lines.append(line)
+    out = "\n".join(lines).strip()
+    return out if len(out) <= limit else out[:limit].rstrip() + " …"
+
+
 def quota_hit(text: str, api_status: int = 0) -> bool:
     """Does this failure mean "the plan is used up" rather than "it broke"?"""
     if api_status in _QUOTA_STATUS:

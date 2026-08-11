@@ -89,6 +89,22 @@ def _stub_slack_sdk() -> None:
     sys.modules["slack_bolt.adapter.socket_mode"] = socket_mode
 
 
+@pytest.fixture(autouse=True)
+def _isolate_provider(tmp_path, monkeypatch):
+    """Every test starts on the default provider, and none can change it.
+
+    Without this the suite reads `state/provider.json` — the choice the machine
+    is actually running under. A `!provider gemini` left over from a live smoke
+    then reroutes every spawn in tests that never mentioned a provider, and
+    `test_account`'s assertions about `CLAUDE_CONFIG_DIR` fail somewhere far
+    from the cause. Tests that care about the switch patch this again with
+    their own file.
+    """
+    from loki.core import providers
+    monkeypatch.setattr(providers, "STATE_FILE", tmp_path / "provider.json")
+    monkeypatch.setattr(providers.config, "PROVIDER", "claude")
+
+
 @pytest.fixture(scope="session")
 def slack_adapter(tmp_path_factory):
     """The imported Slack adapter, wired to a fake client (session-scoped:

@@ -315,6 +315,14 @@ MSG: dict[str, dict[str, str]] = {
                                 "permission rules, so it wasn't run there."),
         "provider_unconfigured": "⚠️ {provider} isn't set up — {detail} is missing.",
         "provider_not_ready_run": "⚠️ {provider} isn't ready — {detail}",
+        "gemini_ineligible": (
+            "🚪 Google stopped serving the Gemini CLI for individual accounts "
+            "in June 2026 — free tier *and* Google AI Pro/Ultra. Signing in "
+            "again won't help.\n"
+            "Still working: an API key (`GEMINI_AUTH=apikey` + "
+            "`GEMINI_API_KEY`, aistudio.google.com — free tier, metered above "
+            "it), or an enterprise Code Assist licence. The successor for a "
+            "plan is Google's own Antigravity CLI."),
         "provider_reauth": "🔑 {provider} needs a fresh login.\n{detail}",
         "provider_no_tools": ("ℹ️ {provider} has no tools — it can't read files "
                               "or run commands, only talk."),
@@ -642,6 +650,12 @@ MSG: dict[str, dict[str, str]] = {
                                 "거기서 돌리지 않았어."),
         "provider_unconfigured": "⚠️ {provider} 설정이 안 됐어 — {detail} 가 없어.",
         "provider_not_ready_run": "⚠️ {provider} 는 아직 준비가 안 됐어 — {detail}",
+        "gemini_ineligible": (
+            "🚪 구글이 2026년 6월에 **개인 계정용 Gemini CLI를 끊었어** — 무료 "
+            "티어는 물론 Google AI Pro/Ultra 도 포함이야. 다시 로그인해도 안 돼.\n"
+            "아직 되는 것: API 키(`GEMINI_AUTH=apikey` + `GEMINI_API_KEY`, "
+            "aistudio.google.com — 무료 티어 있고 초과분은 종량) 또는 기업용 "
+            "Code Assist 라이선스. 요금제로 쓰는 후속은 구글의 Antigravity CLI야."),
         "provider_reauth": "🔑 {provider} 는 다시 로그인해야 해.\n{detail}",
         "provider_no_tools": ("ℹ️ {provider} 는 도구가 없어 — 파일을 읽거나 명령을 "
                               "실행하지 못하고 대화만 돼."),
