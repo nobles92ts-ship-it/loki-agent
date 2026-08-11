@@ -19,7 +19,7 @@ import time
 from typing import Callable
 
 from . import (account, alias, autolisten, blocked, botmute, budget, config,
-               goals, jobs, learn, orgs, plugins, providers, scheduler,
+               goals, jobs, learn, nudge, orgs, plugins, providers, scheduler,
                sessions, usage)
 from .config import t
 
@@ -51,6 +51,7 @@ _GOAL_SUB_RE = re.compile(
 # `!goal done with the release` closes a goal named "with" instead of opening
 # the goal the sentence obviously is.
 _GOAL_ID_RE = re.compile(r"^g\d+$", re.IGNORECASE)
+NUDGE_RE = re.compile(r"^!(?:nudge|넛지|알림)\b\s*(.*)$", re.IGNORECASE)
 EXIT_RE = re.compile(r"^!(?:exit|종료)\b\s*(.*)$", re.IGNORECASE)
 ORG_RE = re.compile(r"^!(?:org|조직)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 _ORG_SUB_RE = re.compile(
@@ -157,6 +158,9 @@ def _builtin(text: str, ctx: dict) -> str | None:
     m = GOAL_RE.match(text)
     if m:
         return goal_cmd(m.group(1), ctx)
+    m = NUDGE_RE.match(text)
+    if m:
+        return nudge_cmd(m.group(1))
     m = EXIT_RE.match(text)
     if m:
         return exit_cmd(m.group(1), ctx)
@@ -544,6 +548,69 @@ def fmt_goal(goal: dict) -> str:
                     n=i, text=s["text"]) for i, s in enumerate(steps, 1)]
     if goal.get("note"):
         lines.append(f"— {goal['note']}")
+    return "\n".join(lines)
+
+
+def nudge_cmd(arg: str) -> str:
+    """`!nudge [on|off [key] | now]` — the switch for what Loki raises unasked.
+
+    ``on``/``off`` with a key mute one watcher; without one they mute the
+    mechanism. The distinction matters: a single noisy watcher should never be
+    a reason to turn off the alert that says the provider stopped answering.
+    """
+    parts = (arg or "").strip().split()
+    sub = parts[0].lower() if parts else ""
+    key = parts[1].strip("`") if len(parts) > 1 else ""
+    if sub in ("on", "켜기", "켜"):
+        if key:
+            nudge.silence(key, False)
+            return fmt_nudges()
+        nudge.set_enabled(True)
+        return t("nudge_on_ok")
+    if sub in ("off", "끄기", "꺼"):
+        if key:
+            nudge.silence(key, True)
+            return t("nudge_hushed", k=key)
+        nudge.set_enabled(False)
+        return t("nudge_off_ok")
+    if sub in ("now", "지금", "확인"):
+        live = nudge.probe()
+        if not live:
+            return t("nudge_nothing")
+        return "\n".join([t("nudge_live_header")]
+                         + [t("nudge_live_line", k=n["key"], why=n["why"])
+                            for n in live])
+    if sub in ("help", "도움말", "?"):
+        return t("nudge_help")
+    return fmt_nudges()
+
+
+def fmt_nudges() -> str:
+    """What is armed, what is true right now, and which of those already spoke.
+
+    Cooldown rides on the condition's own line rather than getting a section of
+    its own. Listed separately it reads as a contradiction — the same key shown
+    once as live and once as quiet — when it is one fact: this is true, and you
+    have already been told.
+    """
+    if not nudge.enabled():
+        return t("nudge_status_off")
+    lines = [t("nudge_status", min=nudge.POLL_MIN)]
+    hushed = set(nudge.silenced())
+    live = [n for n in nudge.probe() if n["key"] not in hushed]
+    if live:
+        lines.append(t("nudge_live_header"))
+        for n in live:
+            line = t("nudge_live_line", k=n["key"], why=n["why"])
+            left = nudge.cooldown_left(n["key"])
+            if left > 0:
+                line += " " + t("nudge_quiet_suffix", h=max(1, int(left // 3600)))
+            lines.append(line)
+    if hushed:
+        lines.append(t("nudge_silenced_header"))
+        lines += [f"• 🔕 `{k}`" for k in sorted(hushed)]
+    if len(lines) == 1:
+        lines.append(t("nudge_nothing"))
     return "\n".join(lines)
 
 
