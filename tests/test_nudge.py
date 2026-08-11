@@ -13,12 +13,31 @@ import pytest
 from loki.core import goals, nudge, usage
 
 
+class _ReadyProvider:
+    """A provider that answers, standing in for whatever this machine has.
+
+    The provider watcher probes the real CLI, so without this every assertion
+    about `probe()` silently depends on whether `claude` happens to be
+    installed on the machine running the tests. It is on a dev box and it is
+    not on a CI runner — which is exactly how this file went green locally and
+    red on all six CI combinations. Tests that care about a broken provider
+    override `providers.current` themselves.
+    """
+    NAME = "claude"
+
+    @staticmethod
+    def available():
+        return True, ""
+
+
 @pytest.fixture
 def store(tmp_path, monkeypatch):
+    from loki.core import providers
     monkeypatch.setattr(nudge, "_FILE", tmp_path / "nudges.json")
     monkeypatch.setattr(goals, "_FILE", tmp_path / "goals.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage.jsonl")
     monkeypatch.setattr(nudge, "ENABLED", True)
+    monkeypatch.setattr(providers, "current", lambda: _ReadyProvider)
     return tmp_path
 
 
