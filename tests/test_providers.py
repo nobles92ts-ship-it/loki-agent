@@ -270,6 +270,45 @@ def test_gemini_ignores_prose_printed_beside_the_envelope(clean, monkeypatch):
     assert res["text"] == "parsed anyway" and res["session_id"] == "g5"
 
 
+def test_gemini_names_the_closed_door_instead_of_dumping_a_stack_trace(
+        clean, monkeypatch):
+    """Google stopped serving the CLI to individual accounts in June 2026. The
+    CLI reports it as an uncaught error with a screenful of node frames, which
+    reads like a bug in Loki — it is a closed door, and there is a setting that
+    goes around it."""
+    providers.set_current("gemini")
+    _capture(monkeypatch, err=(
+        "YOLO mode is enabled.\n"
+        "An unexpected critical error occurred:IneligibleTierError: This "
+        "client is no longer supported for Gemini Code Assist for individuals. "
+        "To continue using Gemini, please migrate to the Antigravity suite.\n"
+        "    at throwIneligibleOrProjectIdError (file:///C:/x/chunk.js:309966:11)\n"
+        "    at _doSetupUser (file:///C:/x/chunk.js:309955:5)\n"
+        "    at process.processTicksAndRejections (node:internal:104:5)\n"), rc=1)
+    res = providers.run("hi", None, "plan")
+    assert res["error"]
+    assert "GEMINI_API_KEY" in res["text"]        # the way around it
+    assert "processTicksAndRejections" not in res["text"]
+
+
+def test_a_raw_failure_loses_its_stack_frames(clean, monkeypatch):
+    providers.set_current("gemini")
+    _capture(monkeypatch, err=(
+        "Error: something broke\n"
+        + "\n".join(f"    at frame{i} (file:///x.js:{i}:1)" for i in range(40))),
+        rc=1)
+    res = providers.run("hi", None, "plan")
+    assert "something broke" in res["text"]
+    assert "at frame" not in res["text"]
+    assert len(res["text"]) < 500
+
+
+def test_trim_keeps_the_message_and_caps_the_length():
+    assert base.trim("boom\n    at a (x.js:1:1)\n    at b (x.js:2:2)") == "boom"
+    assert base.trim("x" * 900).endswith("…") and len(base.trim("x" * 900)) <= 402
+    assert base.trim("") == ""
+
+
 def test_gemini_reports_quota_as_quota(clean, monkeypatch):
     providers.set_current("gemini")
     _capture(monkeypatch, err=json.dumps(

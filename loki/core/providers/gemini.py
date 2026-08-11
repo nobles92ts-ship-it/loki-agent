@@ -47,6 +47,14 @@ _STRIP_EXACT = {"GOOGLE_API_KEY"}
 _DEAD_SESSION = ("invalid session identifier", "no previous sessions",
                  "no_sessions_found", "invalid_session_identifier")
 
+# Google stopped serving the Gemini CLI for individual accounts in June 2026 —
+# free tier *and* paid Google AI Pro/Ultra alike. Only enterprise Code Assist
+# licences and API keys still answer. The CLI reports it as a crash with a
+# stack trace, which reads like a bug in Loki; it is a closed door, and the way
+# through it is a setting.
+_INELIGIBLE = ("ineligibletiererror", "no longer supported for gemini code "
+               "assist", "unsupported_client", "free_tier_user_not_eligible")
+
 _APPROVAL = {"plan": "plan"}        # everything else is full write/execute
 
 
@@ -196,6 +204,11 @@ def _envelope(out: str, err: str) -> dict:
     return {}
 
 
+def _ineligible(blob: str) -> bool:
+    low = (blob or "").lower()
+    return any(mark in low for mark in _INELIGIBLE)
+
+
 def _parse(out: str, err: str, rc: int, sid_hint: str | None) -> dict:
     data = _envelope(out, err)
     sid = data.get("session_id") or sid_hint
@@ -204,11 +217,17 @@ def _parse(out: str, err: str, rc: int, sid_hint: str | None) -> dict:
         msg = (err_obj.get("message") if isinstance(err_obj, dict)
                else str(err_obj)) or ""
         code = (err_obj.get("code") if isinstance(err_obj, dict) else 0) or 0
+        if _ineligible(msg):
+            return base.fail(config.t("gemini_ineligible"), sid, NAME)
         reason = "quota" if base.quota_hit(msg, int(code or 0)) else "error"
         return base.fail(msg, sid, NAME, reason)
     text = (data.get("response") or "").strip()
     if not text and rc != 0:
-        raw = ANSI.sub("", (err or out or "")).strip()
-        return base.fail(raw or config.t("exit_code", rc=rc), sid, NAME,
-                         "quota" if base.quota_hit(raw) else "error")
+        raw = f"{err or ''}\n{out or ''}"
+        if _ineligible(raw):
+            return base.fail(config.t("gemini_ineligible"), sid, NAME)
+        # No envelope to read, so the raw stream is all there is — trimmed,
+        # because a node stack trace is mostly frames.
+        return base.fail(base.trim(raw) or config.t("exit_code", rc=rc), sid,
+                         NAME, "quota" if base.quota_hit(raw) else "error")
     return base.ok(text, sid, NAME)
