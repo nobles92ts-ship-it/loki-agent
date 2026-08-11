@@ -326,8 +326,8 @@ CI 봇도 봇이지만, 진짜 재미있는 건 **다른 Loki**다. 남의 설�
 
 ```markdown
 ## Allowed paths
-- C:\work\docs
-- C:\work\shared-reports
+- C:\Users\YourName\Documents\docs
+- C:\Users\YourName\Documents\shared-reports
 ```
 
 그 밖의 전부 — `WORK_DIR` 나머지, 다른 드라이브, `~/.claude` — 는 게스트 요청마다 도구 레벨에서 차단된다. 수정하면 즉시 반영(재시작 불필요). 폴더는 **통째로** 공개되니 시크릿 섞인 폴더는 절대 넣지 말 것.

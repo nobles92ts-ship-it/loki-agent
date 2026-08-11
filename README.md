@@ -343,8 +343,8 @@ Guests can only read what you **explicitly share**. On first boot Loki creates `
 
 ```markdown
 ## Allowed paths
-- C:\work\docs
-- C:\work\shared-reports
+- C:\Users\YourName\Documents\docs
+- C:\Users\YourName\Documents\shared-reports
 ```
 
 Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is denied at the tool level on every guest request. Edits apply immediately (no restart). A listed folder is shared **in its entirety**, so never list folders containing secrets.
