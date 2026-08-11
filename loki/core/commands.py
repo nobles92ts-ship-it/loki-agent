@@ -136,11 +136,11 @@ def _builtin(text: str, ctx: dict) -> str | None:
         return (t("session_reset") if sessions.reset(ctx.get("session_key"))
                 else t("session_reset_none"))
     if LISTEN_RE.match(text):
-        return t(autolisten.add(ctx["channel"], ctx.get("thread")))
+        return _listen_warning(t(autolisten.add(ctx["channel"], ctx.get("thread"))))
     if UNLISTEN_RE.match(text):
         return t(autolisten.remove(ctx["channel"], ctx.get("thread")))
     if LISTENING_RE.match(text):
-        return fmt_listening()
+        return _listen_warning(fmt_listening())
     if PLUGINS_RE.match(text):
         return _fmt_plugins()
     m = ALIAS_RE.match(text)
@@ -218,6 +218,20 @@ def fmt_jobs(name_of: Callable) -> str:
         lines.append(f"• {j['id']} [{j['status']}] {j.get('kind', '?')}/{who}"
                      f" · {age} · “{snip}”")
     return "\n".join(lines)
+
+
+def _listen_warning(reply: str) -> str:
+    """Say so when a zone has been registered into a void.
+
+    Confirming `!listen` while the app cannot receive channel messages is the
+    worst of both worlds: the state is real, the reply is encouraging, and
+    nothing will ever happen. The wording claims only what is observed — no
+    channel message has reached this install — because the actual subscription
+    is not readable with a bot token.
+    """
+    if autolisten.channel_events_seen():
+        return reply
+    return reply + "\n" + t("listen_no_events")
 
 
 def fmt_listening() -> str:

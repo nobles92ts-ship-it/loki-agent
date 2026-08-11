@@ -21,9 +21,10 @@ def _load() -> dict:
     try:
         d = json.loads(_FILE.read_text(encoding="utf-8"))
         return {"channels": set(d.get("channels", [])),
-                "threads": set(d.get("threads", []))}
+                "threads": set(d.get("threads", [])),
+                "seen": bool(d.get("seen"))}
     except Exception:
-        return {"channels": set(), "threads": set()}
+        return {"channels": set(), "threads": set(), "seen": False}
 
 
 _state = _load()
@@ -33,9 +34,34 @@ def _save() -> None:
     try:
         _FILE.write_text(json.dumps(
             {"channels": sorted(_state["channels"]),
-             "threads": sorted(_state["threads"])}), encoding="utf-8")
+             "threads": sorted(_state["threads"]),
+             "seen": _state.get("seen", False)}), encoding="utf-8")
     except Exception:
         log.exception("autolisten.json write failed")
+
+
+# ── has a channel message ever reached us? ───────────────────────────────────
+# A zone is inert unless the Slack app subscribes to `message.channels` /
+# `message.groups`, and nothing says so: `!listen` confirms, the state is
+# written, and no message ever arrives. Slack offers no way to read an app's
+# event subscriptions with a bot token, so this reports the one thing we can
+# actually know — whether a channel message has ever reached this install.
+# It latches on the first one and persists, so a quiet channel does not undo it.
+def note_channel_event() -> None:
+    """Called for every non-DM message event. Cheap after the first."""
+    if _state.get("seen"):
+        return
+    with _lock:
+        if _state.get("seen"):
+            return
+        _state["seen"] = True
+        _save()
+    log.info("first channel message received — auto-listen zones can fire")
+
+
+def channel_events_seen() -> bool:
+    with _lock:
+        return bool(_state.get("seen"))
 
 
 def _tkey(channel: str, thread_ts: str) -> str:
