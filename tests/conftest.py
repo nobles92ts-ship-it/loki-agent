@@ -105,6 +105,58 @@ def _isolate_provider(tmp_path, monkeypatch):
     monkeypatch.setattr(providers.config, "PROVIDER", "claude")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_state(tmp_path, monkeypatch):
+    """No test may write the machine's real `state/` directory.
+
+    Every module here binds its path at import time from `config.STATE`, so
+    patching `config.STATE` afterwards does nothing — each one has to be
+    redirected by name. Miss one and the suite quietly edits live state.
+
+    That is not hypothetical. `!listen`'s new warning latches a flag the first
+    time a channel message arrives; the adapter tests push channel messages
+    through `on_message`, `autolisten` was not isolated, and the suite set
+    `seen: true` on the running install — switching off the very warning it was
+    testing. `state/provider.json` had bitten the same way a day earlier. Two
+    instances of one class, so the fix is the whole list rather than a third
+    one-off.
+
+    Tests that care about a particular file patch it again with their own.
+    """
+    from loki.core import (account, autolisten, blocked, botallow, botmute,
+                           budget, goals, health, learn, nudge, providers,
+                           ratelimit, scheduler, selftest, sessions, usage)
+    from loki.core.providers import groq
+
+    # a name a test would not pick for itself — `tmp_path/"state"` collides
+    # with the several that build their own state dir there
+    state = tmp_path / "_isolated_state"
+    state.mkdir(exist_ok=True)
+    for mod, attr, name in (
+            (account, "STATE_FILE", "account.json"),
+            (autolisten, "_FILE", "autolisten.json"),
+            (blocked, "_FILE", "blocked_channels.json"),
+            (botallow, "ALLOW_FILE", "bots_allowed.json"),
+            (botmute, "_FILE", "bot_muted.json"),
+            (budget, "BUDGET_FILE", "budget.json"),
+            (goals, "_FILE", "goals.json"),
+            (health, "_FILE", "health.json"),
+            (learn, "LEARN_FILE", "learnings.md"),
+            (nudge, "_FILE", "nudges.json"),
+            (providers, "STATE_FILE", "provider.json"),
+            (ratelimit, "RATE_FILE", "ratelimit.json"),
+            (scheduler, "SCHED_FILE", "schedules.json"),
+            (selftest, "RESULT_FILE", "selftest.json"),
+            (sessions, "_FILE", "sessions.json"),
+            (usage, "USAGE_FILE", "usage.jsonl"),
+            (groq, "_STORE", "groq")):
+        monkeypatch.setattr(mod, attr, state / name)
+    # autolisten caches its file in memory at import, so the redirect alone
+    # would still let one test's zones leak into the next.
+    monkeypatch.setattr(autolisten, "_state",
+                        {"channels": set(), "threads": set(), "seen": False})
+
+
 @pytest.fixture(scope="session")
 def slack_adapter(tmp_path_factory):
     """The imported Slack adapter, wired to a fake client (session-scoped:
