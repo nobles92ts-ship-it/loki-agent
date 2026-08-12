@@ -1,5 +1,19 @@
 # Changelog
 
+## [v1.10.1] 2026-08-12
+
+Two fixes, both of the same kind: something reported success while doing nothing.
+
+### Fixes
+
+- **`!listen` confirmed a zone it could never fill.** An auto-listen zone only fires if the Slack app subscribes to `message.channels` / `message.groups`. Without them `!listen` still wrote the state and still answered "now listening" — and nothing ever arrived. Slack's bot-token API cannot report an app's event subscriptions, so the check is the one thing observable from inside: whether a channel message has ever reached this install. It latches on the first one and persists, so a quiet weekend does not bring the warning back to an install where zones demonstrably work. `!listening` carries the same line, because that is where you go when a zone is not answering.
+
+- **The test suite was writing the machine's real `state/`.** Only `provider.json` and `sessions.json` were isolated; every other module binds its path from `config.STATE` at import, so any test touching one of the other fifteen edited live state on the machine running the suite. This was not theoretical — the adapter tests push channel messages through `on_message`, `autolisten` was not isolated, and the suite set `seen: true` on a running install, switching off the warning added in the same release while every test passed. `conftest` now redirects the whole list and resets `autolisten`'s import-time cache. **Adding a new state file means adding it to that list.**
+
+### Notes
+
+If you upgrade and `!listen` suddenly warns you, that is the fix working: the zone was never going to fire. Add `message.channels` and `message.groups` to your app's Event Subscriptions — or leave it, if you only ever call Loki by `@mention` and DM, which are unaffected.
+
 ## [v1.10.0] 2026-08-11
 
 Loki gets to open the conversation.
