@@ -38,6 +38,9 @@ and turn 2 answers from that text. Rules:
 - A manifest folder outside `WORK_DIR` is granted to this reader as exactly that
   folder — never a drive root, nor a folder holding `WORK_DIR`, the worker or
   the home folder. Claude runs still deny it.
+- With `LOKI_SEARCH_INDEX` set, a context-mode index ranks where to look. Each
+  path it names still passes the containment check, and the section shown is
+  read from the file, never from the index.
 - Caps: 300 listed entries, 5000 files walked, 6 files × 12k chars, 40 search
   hits (8 per file), 64 MiB searched, 40k chars per turn.
 

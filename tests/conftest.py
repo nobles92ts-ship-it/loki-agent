@@ -103,11 +103,15 @@ def _isolate_provider(tmp_path, monkeypatch):
     `LOKI_OWNER_MODE` is the same kind of machine setting: left as the machine
     has it, every owner-DM test on an install with `restricted` would take the
     guarded route and write its settings file into the real `state/`.
+    So is `LOKI_SEARCH_INDEX`: left set, every search test would rank by the
+    machine's own knowledge base.
     """
     from loki.core import providers
     monkeypatch.setattr(providers, "STATE_FILE", tmp_path / "provider.json")
     monkeypatch.setattr(providers.config, "PROVIDER", "claude")
     monkeypatch.setattr(providers.config, "OWNER_MODE", "full")
+    monkeypatch.setattr(providers.config, "SEARCH_INDEX", "")
+    monkeypatch.setattr(providers.config, "SEARCH_INDEX_SOURCE", "")
 
 
 @pytest.fixture(autouse=True)

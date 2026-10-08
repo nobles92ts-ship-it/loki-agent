@@ -16,6 +16,10 @@ What the model still decides is *what to ask for*, through a two-turn exchange
 paths to read and keywords to search. The request is data; nothing in it can
 widen the roots, which come only from the manifest.
 
+A search index (:mod:`loki.core.searchindex`), when configured, only ranks:
+each path it names goes through :func:`inside` like any other, and the section
+shown is read from the file.
+
 Narrower than Claude's deny rules on purpose: the worker's own tree, the org
 registry, credential files and secret-looking names are excluded even inside a
 granted folder, and only text files and spreadsheets (read as text) are
@@ -30,7 +34,7 @@ import os
 import re
 from pathlib import Path
 
-from . import config, files, guard, scope
+from . import config, files, guard, scope, searchindex
 from .config import log
 
 MAX_LISTED = 300            # entries shown to the model in turn 1
@@ -46,6 +50,8 @@ MAX_HIT_CHARS = 600                   # a table row together with its column nam
 MAX_TOTAL_CHARS = 40000
 MAX_KEYWORDS = 5
 MAX_REQUESTS = 2            # a second search can use the words the first one found
+MAX_SECTIONS = 4            # sections a search index points to, per search —
+MAX_SECTION_CHARS = 1500    # small beside MAX_TOTAL_CHARS, so requested files still fit
 
 TEXT_SUFFIXES = {".md", ".txt", ".csv", ".tsv", ".json", ".yaml", ".yml",
                  ".html", ".htm", ".xml", ".log", ".ini", ".toml", ".rst"}
@@ -271,14 +277,51 @@ def _scores(line: str, lows: list[str], words: list[list[str]]) -> list[int]:
             for k, ws in zip(lows, words)]
 
 
+def _sections(roots: list[Path], words: list[str]) -> list[str]:
+    """The search index's best places that are shared files, each shown as the
+    section under its heading — read from the file, never from the index."""
+    if not config.SEARCH_INDEX:
+        return []
+    places = searchindex.places(words)
+    fixed = (_valid_roots(roots), _excluded())
+    anchors = list(dict.fromkeys(Path(rr.anchor) for rr in fixed[0]))
+    out, shown = [], []
+    for path, heads in places:
+        rp = next((r for a in anchors if (r := inside(a / path, roots, fixed))), None)
+        text = _text(rp) if rp is not None else None
+        part = searchindex.section(text, heads) if text else None
+        if not part:
+            continue
+        body = part[:MAX_SECTION_CHARS]
+        if any(p == rp and body in s for p, s in shown):
+            continue                        # already on screen inside a bigger one
+        shown.append((rp, body))
+        cut = "" if len(part) <= MAX_SECTION_CHARS else "\n… (section continues)"
+        out.append(f"### {' > '.join([_label(rp, roots), *heads])}\n{body}{cut}")
+        if len(out) >= MAX_SECTIONS:
+            break
+    log.info("allowread: index ranked %d places, %d shown", len(places), len(out))
+    return out
+
+
 def search(roots: list[Path], keywords: list) -> str:
+    """The sections a search index ranks first, when one is configured, then
+    the matching lines."""
+    kws = [str(k).strip()[:60] for k in keywords[:MAX_KEYWORDS] if str(k).strip()]
+    if not kws:
+        return ""
+    blocks = _sections(roots, [w for k in kws for w in k.split()])
+    hits = _line_hits(roots, kws)
+    if hits:
+        blocks.append("\n".join(hits))
+    return "\n\n".join(blocks)
+
+
+def _line_hits(roots: list[Path], kws: list[str]) -> list[str]:
     """Matching lines, most relevant file first: the one whose name carries the
     most keywords, then the one matching the most different keywords, then the
     most lines. Walk order only breaks ties. Within a file, the lines matching
     the most keywords, most exactly, come first."""
-    kws = [str(k).strip()[:60] for k in keywords[:MAX_KEYWORDS] if str(k).strip()]
-    if not kws:
-        return ""
     lows = [k.lower() for k in kws]
     words = [k.split() for k in lows]
     squashed = [s for k in lows if (s := _squash(k))]
@@ -308,8 +351,8 @@ def search(roots: list[Path], keywords: list) -> str:
         for _, i, line in best[:MAX_HITS_PER_FILE]:
             hits.append(f"{_label(rp, roots)}:{i + 1}: {line.strip()[:MAX_HIT_CHARS]}")
             if len(hits) >= MAX_SEARCH_HITS:
-                return "\n".join(hits)
-    return "\n".join(hits)
+                return hits
+    return hits
 
 
 def read(roots: list[Path], labels: list) -> str:

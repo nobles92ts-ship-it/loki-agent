@@ -392,6 +392,8 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 
 A folder **outside** `WORK_DIR` — a data folder on another drive, say — can be listed too. It opens as exactly that folder, and only on runs that read through Loki (Codex with `LOKI_RESTRICTED_MODE=sealed`); on Claude the deny list keeps other drives shut regardless. A drive root, or a folder that holds `WORK_DIR`, the worker or your home folder, is refused. Spreadsheets (`.xlsx`) in a shared folder are read as text, one row per line with its column names.
 
+Those sealed searches can also be ranked by a full-text index you already keep — `LOKI_SEARCH_INDEX`, a [context-mode](https://github.com/mksglu/context-mode) knowledge base whose chunk titles start with the file each chunk came from (index a bundle with one `# path` heading per file). The index only says *where* to look: Loki shows the sections it ranks first, each read from the shared file itself, before the plain line matches. A page outside the shared folders is dropped however high it ranks, the index's own text never reaches the model, and a missing or broken index leaves search as it was. `LOKI_SEARCH_INDEX_SOURCE` narrows it to one source label.
+
 ### Conversation basics
 
 - **Your DM is one running conversation** — just keep typing, no need to repeat yourself. Threads work the same way, each with its own memory.

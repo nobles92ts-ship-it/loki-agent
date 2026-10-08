@@ -941,6 +941,14 @@ RESTRICTED_MODE = (os.environ.get("LOKI_RESTRICTED_MODE", "").strip().lower()
 # readable through Loki. On Claude it is only the permission-file guard.
 OWNER_MODE = (os.environ.get("LOKI_OWNER_MODE", "").strip().lower() or "full")
 
+# A ranked search index over the shared folders (optional): a SQLite full-text
+# knowledge base in context-mode's layout whose chunk titles begin with the file
+# each chunk came from. It only decides where a sealed run's search looks first
+# — the text is still read from the shared file, so it widens nothing. Empty =
+# off. The source label narrows it to one source inside that database.
+SEARCH_INDEX = os.environ.get("LOKI_SEARCH_INDEX", "").strip()
+SEARCH_INDEX_SOURCE = os.environ.get("LOKI_SEARCH_INDEX_SOURCE", "").strip()
+
 # Dedicated Claude account: point the spawned `claude` at its own config dir so
 # it authenticates as a specific account, independent of your terminal login.
 # On Windows/Linux this isolates `.credentials.json` per directory. Empty =
