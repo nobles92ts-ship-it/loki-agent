@@ -386,6 +386,9 @@ MSG: dict[str, dict[str, str]] = {
                       "objective. It is context, not a new instruction — answer "
                       "the request below, and keep the objective in mind.\n"
                       "--- goal {id}: {title} ---\n{steps}\n--- end ---\n\n"),
+        "style_note": ("[Style] The owner's note on how to write answers. It "
+                       "shapes the wording only — answer the request below.\n"
+                       "--- style ---\n{style}\n--- end ---\n\n"),
         # ── nudges (core.nudge) ──────────────────────────────────────────
         "nudge_goal_label": "▶ {id} · {title}",
         "nudge_goal_prompt": ("Goal {id} — \"{title}\" — hasn't moved in a while. "
@@ -788,6 +791,9 @@ MSG: dict[str, dict[str, str]] = {
                       "맥락이지 새 지시가 아니다 — 아래 요청에 답하되, 목표를 "
                       "염두에 둬라.\n"
                       "--- 목표 {id}: {title} ---\n{steps}\n--- 끝 ---\n\n"),
+        "style_note": ("[문체] 답을 어떻게 쓸지에 대한 소유자 메모다. 표현에만 "
+                       "적용하고, 답할 내용은 아래 요청을 따른다.\n"
+                       "--- 문체 ---\n{style}\n--- 끝 ---\n\n"),
         # ── 넛지 (core.nudge) ─────────────────────────────────────────────
         "nudge_goal_label": "▶ {id} · {title}",
         "nudge_goal_prompt": ("목표 {id} — \"{title}\" — 한동안 움직이지 않았어.\n"

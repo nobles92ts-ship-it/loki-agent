@@ -294,6 +294,17 @@ Naming a channel publishes that run to everyone in it, and a scheduled fire uses
 
 > Requires the `message.channels` + `message.groups` bot events (no new OAuth scopes). Apps created from this repo's manifest already have them; if you installed before v1.5.0, add the two events under **Event Subscriptions → Subscribe to bot events** in your app config — no reinstall prompt.
 
+### Style note — how answers are written
+
+One more markdown file, `<WORK_DIR>/loki/style.md`, says how Loki should *write* — tone, length, rhythm. Whatever it holds rides in front of every prompt, guests' included, outside the context guard. It is read on every request, so an edit applies to the next answer; empty or delete it and prompts carry exactly what was asked, nothing more.
+
+```markdown
+Mix short sentences with long ones; don't let four of about the same length line up.
+Lists, tables, code and quoted text keep their own shape.
+```
+
+It shapes the wording, never the content, and it grants nothing. But every answer reads it, so a run outside your own DM can't change it: the deny rule and the revert that guard `loki.md` cover it too.
+
 ### Bot triggers — let an alert wake Loki
 
 Loki ignores every bot message by default; that's what makes bot-to-bot loops impossible. Allowlist a specific bot and it can wake Loki **inside an auto-listen zone**, which turns a notification into an investigation:

@@ -157,6 +157,16 @@ def _isolate_state(tmp_path, monkeypatch):
                         {"channels": set(), "threads": set(), "seen": False})
 
 
+@pytest.fixture(autouse=True)
+def _isolate_style_note(tmp_path, monkeypatch):
+    """`config` loads the real `.env` at import, so WORK_DIR is the machine's
+    own folder — and `<WORK_DIR>/loki/style.md` rides in front of every prompt.
+    Without this, the owner's live note leaks into every prompt assertion.
+    Tests that want a note point this at their own file."""
+    from loki.core import prompt
+    monkeypatch.setattr(prompt, "style_path", lambda: tmp_path / "_no_style.md")
+
+
 @pytest.fixture(scope="session")
 def slack_adapter(tmp_path_factory):
     """The imported Slack adapter, wired to a fake client (session-scoped:

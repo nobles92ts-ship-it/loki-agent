@@ -4,7 +4,9 @@
 (the owner + trusted-command allowlists) decide who may read and run what. They
 must only ever change through the owner's own DM — either by asking Loki there,
 or via the owner-gated ``!org`` commands, which write them from Python and never
-go through an LLM at all.
+go through an LLM at all. ``loki/style.md`` is held to the same rule: it grants
+nothing, but it rides in front of every prompt, so a run that rewrote it would
+steer every answer after it.
 
 Two layers, because one is not enough:
 
@@ -31,7 +33,7 @@ import json
 import os
 from pathlib import Path
 
-from . import config
+from . import config, prompt
 from .config import log
 
 
@@ -44,8 +46,9 @@ def _orgs_dir() -> Path:
 
 
 def _protected_files() -> list[Path]:
-    """Every file whose contents decide access, in a stable order."""
-    files = [_loki_dir() / "loki.md", config.BASE / ".env"]
+    """Every file whose contents decide access, plus the style note, in a
+    stable order."""
+    files = [_loki_dir() / "loki.md", config.BASE / ".env", prompt.style_path()]
     try:
         files += sorted(_orgs_dir().glob("*.md"))
     except Exception:

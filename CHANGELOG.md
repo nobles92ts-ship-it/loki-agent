@@ -4,6 +4,8 @@
 
 ### What you can do now
 
+- **A style note for every answer.** `<WORK_DIR>/loki/style.md` says how Loki should write — tone, length, rhythm — and rides in front of every prompt, outside the context guard. Guests get it too: a sealed run reads nothing but its prompt, so the prompt is the only place a style rule can reach it. No file, no note — the prompt carries exactly what was asked, as before. The file is read on every request, and it sits under the same deny rule and tamper revert as `loki.md`, because every answer reads it.
+
 - **On Codex, a restricted request can run sealed — with no tools at all.** A guest's request, or yours in a shared channel, is fenced by Claude Code deny rules that Codex cannot carry, and Codex's own permission profiles cannot say "deny everything except these folders" on Windows, so every such request fell back to Claude. `LOKI_RESTRICTED_MODE=sealed` runs them on Codex with every tool removed instead: no MCP servers or connectors, no shell, a read-only sandbox, an allowlisted environment and an empty working folder. A guest still reads its shared folders — Loki reads them in Python and hands the text over, and every path must land inside a granted folder. The default, `fallback`, keeps running them on Claude. The measurements are in `docs/codex-migration.md`.
 
 ### Fixes
