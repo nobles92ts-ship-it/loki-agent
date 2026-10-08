@@ -245,14 +245,15 @@ def _request(text: str) -> dict | None:
 
 
 def run(mod, prompt: str, resume_id: str | None, roots: list[Path],
-        job: dict | None = None) -> dict:
+        job: dict | None = None, images: tuple = ()) -> dict:
     """A sealed turn that may read the shared folders through Loki.
 
     Turn 1 sees the file listing and either answers or asks; turn 2 (only when
-    asked) sees what Loki read and answers. A failed turn 1 is returned as is."""
+    asked) sees what Loki read and answers. A failed turn 1 is returned as is.
+    ``images`` ride on turn 1 with the request; turn 2 resumes that session."""
     files = listing(roots)
     note = config.t("allowread_note", listing=files or "(empty)")
-    res = mod.run_sealed(note + prompt, resume_id, job=job)
+    res = mod.run_sealed(note + prompt, resume_id, job=job, images=images)
     if res.get("error"):
         return res
     req = _request(res.get("text", ""))

@@ -123,8 +123,8 @@ def test_opt_in_serves_restricted_requests_sealed(clean, monkeypatch):
     monkeypatch.setattr(config, "RESTRICTED_MODE", "sealed")
     called = {}
     monkeypatch.setattr(codex, "run_sealed",
-                        lambda p, r, cwd=None, job=None: called.update(p=p) or
-                        {"provider": "codex"})
+                        lambda p, r, cwd=None, job=None, images=():
+                        called.update(p=p) or {"provider": "codex"})
     monkeypatch.setattr(claude, "run", lambda *a, **k: pytest.fail("fell back"))
     res = providers.run("hi", None, "plan", settings_file="C:/deny.json")
     assert res["provider"] == "codex" and called["p"] == "hi"

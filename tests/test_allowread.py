@@ -188,8 +188,8 @@ def test_sealed_guest_routing_uses_allowread(tree, tmp_path, monkeypatch):
     providers.set_current("codex")
     seen = {}
     monkeypatch.setattr(allowread, "run",
-                        lambda mod, p, r, roots, job=None: seen.update(roots=roots)
-                        or {"provider": "codex"})
+                        lambda mod, p, r, roots, job=None, images=():
+                        seen.update(roots=roots) or {"provider": "codex"})
     providers.run("hi", None, "plan", settings_file="C:/deny.json",
                   read_roots=tree["roots"])
     assert seen["roots"] == tree["roots"]

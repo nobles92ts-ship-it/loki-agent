@@ -421,10 +421,12 @@ def _handle(job: dict) -> None:
     notice.start()
     # Permission files may only change in the owner's own DM. `D…` = DM, straight
     # from Slack — a transport fact no message content can forge. Everything else
-    # runs under the guard's deny rules and gets snapshot/reverted (core.guard).
+    # runs under the guard's deny rules and gets snapshot/reverted (core.guard),
+    # and so does that DM when LOKI_OWNER_MODE=restricted.
     owner_dm = (job["user"] == ALLOWED_USER
                 and str(job.get("channel") or "").startswith("D"))
-    snap = None if owner_dm else guard.snapshot()
+    unguarded = owner_dm and config.OWNER_MODE != "restricted"
+    snap = None if unguarded else guard.snapshot()
     try:
         if job.get("target_channel"):          # owner's !summary <channel_id>
             context, kind, scope_label = (_channel_context(job["target_channel"]),
@@ -461,11 +463,18 @@ def _handle(job: dict) -> None:
         # An owner talking in a *channel* is protected too: _channel_context
         # feeds other people's messages into a bypassPermissions run, so that
         # path carries the same injection risk as a guest's.
+        #
+        # LOKI_OWNER_MODE=restricted puts the DM on that route as well. Sealed,
+        # it reads only what Loki hands it — so it gets the guests' shared
+        # folders through Loki, and its screenshots ride on the prompt.
         read_roots = None
         if job["user"] == ALLOWED_USER:
             guest_settings, run_cwd = None, None
             if not owner_dm:
                 guest_settings = guard.settings_file()
+            elif not unguarded:
+                guest_settings = guard.settings_file()
+                read_roots = scope.read_roots(scope.guest_scope()[1])
         else:
             # org members get their org's manifest; unaffiliated → loki.md
             guest_settings, manifest = scope.write_scope_settings(job.get("org"))
@@ -476,7 +485,8 @@ def _handle(job: dict) -> None:
         t0 = time.time()
         res = brain.run_claude(prompt, resume_id, perm_mode,
                                settings_file=guest_settings, cwd=run_cwd,
-                               job=job, read_roots=read_roots)
+                               job=job, read_roots=read_roots,
+                               images=tuple(img_paths))
         if job.get("cancelled"):           # killed via !cancel/!stop — stay quiet
             return
 
@@ -486,7 +496,8 @@ def _handle(job: dict) -> None:
             sessions.reset(skey)
             res = brain.run_claude(prompt, None, perm_mode,
                                    settings_file=guest_settings, cwd=run_cwd,
-                                   job=job, read_roots=read_roots)
+                                   job=job, read_roots=read_roots,
+                                   images=tuple(img_paths))
             if job.get("cancelled"):
                 return
             if not res["error"]:

@@ -13,7 +13,8 @@ providers that can carry one may serve a request that needs one, and the rest
 of Loki decides that a request needs one by passing ``settings_file``. So
 :func:`run` sends any such request to Claude no matter what the switch says.
 In practice: your own DM and the terminal console follow the switch; guests,
-and you in a shared channel, always get the sandboxed provider. A provider
+and you in a shared channel, always get the sandboxed provider — and so does
+your DM with ``LOKI_OWNER_MODE=restricted``. A provider
 switch must not be able to quietly widen what a stranger can read.
 
 The one exception narrows rather than widens: with ``LOKI_RESTRICTED_MODE=
@@ -143,12 +144,16 @@ def run(prompt: str, resume_id: str | None,
         cwd: str | None = None,
         job: dict | None = None,
         provider: str | None = None,
-        read_roots: list | None = None) -> dict:
+        read_roots: list | None = None,
+        images: tuple = ()) -> dict:
     """One turn on the chosen provider, sealed Codex, or Claude fallback.
 
     ``read_roots``: the folders a guest's manifest grants. Claude enforces those
     through ``settings_file`` and ignores this; a sealed run reads them through
     :mod:`loki.core.allowread` instead.
+
+    ``images``: local paths the prompt already names. Only a sealed run uses
+    them — it cannot open a path, so they are attached to the prompt.
 
     Returns the contract every caller already expects:
     ``{text, session_id, error, reason, provider}``.
@@ -160,8 +165,10 @@ def run(prompt: str, resume_id: str | None,
             log.info("provider %s cannot hold a sandbox — this request runs "
                      "sealed (no tools)", mod.NAME)
             if read_roots:
-                return allowread.run(mod, prompt, resume_id, read_roots, job=job)
-            return mod.run_sealed(prompt, resume_id, cwd=cwd, job=job)
+                return allowread.run(mod, prompt, resume_id, read_roots, job=job,
+                                     images=images)
+            return mod.run_sealed(prompt, resume_id, cwd=cwd, job=job,
+                                  images=images)
         log.info("provider %s cannot hold a sandbox — this request runs on %s",
                  mod.NAME, FALLBACK.NAME)
         mod = FALLBACK

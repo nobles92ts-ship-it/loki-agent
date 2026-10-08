@@ -78,6 +78,7 @@ Full walkthrough + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
 | `ALLOWED_USER_ID` | — (required) | Your Slack member ID. **Fail-closed: Loki refuses to boot without it.** |
 | `WORK_DIR` | — (required) | The directory Claude works in |
 | `CLAUDE_PERMISSION_MODE` | `plan` | `plan` = read-only (default) · `bypassPermissions` = full write/execute — opt-in, see [SECURITY](docs/SECURITY.md) |
+| `LOKI_OWNER_MODE` | `full` | Your own DM. `full` = every tool the agent has (on Codex: a browser and computer use too) · `restricted` = the shared-channel route — sealed on Codex with `LOKI_RESTRICTED_MODE=sealed`: no tools, it answers from the thread, screenshots and the shared folders Loki hands it |
 | `LOKI_RESTRICTED_MODE` | `fallback` | A guest's or shared-channel request when the selected provider cannot carry Claude's deny rules (Codex). `fallback` = run it on Claude · `sealed` = run it on Codex with no tools at all; guests' shared folders are read through Loki — see [codex-migration](docs/codex-migration.md) |
 | `CLAUDE_MODEL` | account default | e.g. `sonnet` (lighter on your limits) |
 | `TIMEOUT_SEC` | `300` | per-request timeout |

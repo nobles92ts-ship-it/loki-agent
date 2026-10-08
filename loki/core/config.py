@@ -922,6 +922,14 @@ PROVIDER = (os.environ.get("LOKI_PROVIDER", "").strip().lower() or "claude")
 RESTRICTED_MODE = (os.environ.get("LOKI_RESTRICTED_MODE", "").strip().lower()
                    or "fallback")
 
+# Your own DM. `full` runs it at CLAUDE_PERMISSION_MODE with every tool the
+# provider has — on Codex that includes a browser and the desktop itself
+# (computer use). `restricted` sends it down the route you get in a shared
+# channel: with LOKI_RESTRICTED_MODE=sealed on codex that is no tools at all —
+# the model answers from what Loki hands it, and the guests' shared folders stay
+# readable through Loki. On Claude it is only the permission-file guard.
+OWNER_MODE = (os.environ.get("LOKI_OWNER_MODE", "").strip().lower() or "full")
+
 # Dedicated Claude account: point the spawned `claude` at its own config dir so
 # it authenticates as a specific account, independent of your terminal login.
 # On Windows/Linux this isolates `.credentials.json` per directory. Empty =

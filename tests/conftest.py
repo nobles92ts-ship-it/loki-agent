@@ -99,10 +99,15 @@ def _isolate_provider(tmp_path, monkeypatch):
     `test_account`'s assertions about `CLAUDE_CONFIG_DIR` fail somewhere far
     from the cause. Tests that care about the switch patch this again with
     their own file.
+
+    `LOKI_OWNER_MODE` is the same kind of machine setting: left as the machine
+    has it, every owner-DM test on an install with `restricted` would take the
+    guarded route and write its settings file into the real `state/`.
     """
     from loki.core import providers
     monkeypatch.setattr(providers, "STATE_FILE", tmp_path / "provider.json")
     monkeypatch.setattr(providers.config, "PROVIDER", "claude")
+    monkeypatch.setattr(providers.config, "OWNER_MODE", "full")
 
 
 @pytest.fixture(autouse=True)

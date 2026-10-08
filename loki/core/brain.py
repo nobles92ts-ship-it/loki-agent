@@ -25,7 +25,8 @@ def run_claude(prompt: str, resume_id: str | None,
                cwd: str | None = None,
                job: dict | None = None,
                provider: str | None = None,
-               read_roots: list | None = None) -> dict:
+               read_roots: list | None = None,
+               images: tuple = ()) -> dict:
     """Run one turn headless. Returns {text, session_id, error, reason, provider}.
 
     settings_file: per-request settings JSON (e.g. the guest allowlist's deny
@@ -39,10 +40,13 @@ def run_claude(prompt: str, resume_id: str | None,
     it to check a specific agent).
     read_roots: a guest's granted folders, for a sealed run to read through
     Loki (Claude enforces the same grant through settings_file instead).
+    images: local image paths already named in the prompt. A run with tools
+    opens them itself; a sealed run gets them attached, the only way it can.
     """
     return providers.run(prompt, resume_id, permission_mode,
                          settings_file=settings_file, cwd=cwd, job=job,
-                         provider=provider, read_roots=read_roots)
+                         provider=provider, read_roots=read_roots,
+                         images=images)
 
 
 def claude_version() -> str:
