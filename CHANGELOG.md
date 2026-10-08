@@ -6,6 +6,10 @@
 
 - **On Codex, a restricted request can run sealed — with no tools at all.** A guest's request, or yours in a shared channel, is fenced by Claude Code deny rules that Codex cannot carry, and Codex's own permission profiles cannot say "deny everything except these folders" on Windows, so every such request fell back to Claude. `LOKI_RESTRICTED_MODE=sealed` runs them on Codex with every tool removed instead: no MCP servers or connectors, no shell, a read-only sandbox, an allowlisted environment and an empty working folder. A guest still reads its shared folders — Loki reads them in Python and hands the text over, and every path must land inside a granted folder. The default, `fallback`, keeps running them on Claude. The measurements are in `docs/codex-migration.md`.
 
+### Fixes
+
+- **A poll in the channel was invisible to Loki.** Asked `@Loki 투표 결과 알려줘` about two Open Poll+ polls, Loki answered three times that there were no tallies — and from what it was given, it was right. The bare mention's channel context skipped every message with a subtype, so an app's own post (`bot_message`) went the way of joins and topic changes. Kept, it would still have read only `Poll : <question>`: apps put their content in blocks and leave `text` as a notification fallback. And the copies forwarded into the thread arrived as attachments, which thread context never read — a sealed run cannot open the link itself either. Context now reads a message the way the client shows it: an app's section, header and context blocks; a forwarded or linked Slack message's own blocks, marked `↪ <author>:`; a bot's legacy attachments. A person's link previews stay out as before, and channel context keeps its 400-character cap per message.
+
 ## [v1.10.1] 2026-08-12
 
 Two fixes, both of the same kind: something reported success while doing nothing.

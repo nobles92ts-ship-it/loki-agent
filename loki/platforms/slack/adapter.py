@@ -128,6 +128,61 @@ def _user_name(uid: str | None) -> str | None:
 
 
 # ─────────────────────────── context gathering ───────────────────────────
+def _blocks_text(blocks: list | None) -> str:
+    """The text Block Kit shows: section and header text, fields, context lines.
+
+    Apps put their content here — a poll's options and their "N표", a form's
+    answers — and leave `text` as a one-line notification fallback (Open Poll+
+    sends only `Poll : <question>`). Buttons, images and dividers are controls,
+    not content. `rich_text` is skipped: whoever wrote it, `text` carries it.
+    """
+    out: list[str] = []
+    for b in blocks or []:
+        if b.get("type") in ("section", "header"):
+            out.append(((b.get("text") or {}).get("text") or "").strip())
+            out += [(f.get("text") or "").strip() for f in b.get("fields") or []]
+        elif b.get("type") == "context":
+            out.append(" ".join((e.get("text") or "").strip()
+                                for e in b.get("elements") or []
+                                if e.get("type") in ("mrkdwn", "plain_text")))
+    return "\n".join(s for s in out if s.strip())
+
+
+def _shown_text(m: dict) -> str:
+    """A message as people see it, for context.
+
+    A person's words are in `text` (see message_text). An app's are in its
+    blocks, and a message forwarded or linked in — like a bot's own legacy
+    attachment — rides in `attachments`. A person's link previews stay out, as
+    before: they are the linked page, not the conversation.
+    """
+    parts = [message_text(m)]
+    if m.get("bot_id"):
+        shown = _blocks_text(m.get("blocks"))
+        if parts[0] in shown:              # the fallback only repeats the blocks
+            parts = []
+        parts.append(shown)
+    for att in (m.get("attachments") or [])[:botallow.MAX_ATTACHMENTS]:
+        if not isinstance(att, dict):
+            continue
+        quoted = att.get("is_share") or att.get("is_msg_unfurl")
+        if not (quoted or m.get("bot_id")):
+            continue
+        # A shared message carries the original's blocks; older shapes and
+        # bots' own attachments have plain fields, `fallback` as a last resort.
+        body = "\n".join(_blocks_text((mb.get("message") or {}).get("blocks"))
+                         for mb in att.get("message_blocks") or []).strip()
+        body = body or "\n".join(
+            s for s in ((att.get(k) or "").strip()
+                        for k in ("pretext", "title", "text")) if s)
+        body = body or (att.get("fallback") or "").strip()
+        if body and quoted:
+            who = att.get("author_name") or att.get("author_subname")
+            body = f"↪ {who}: {body}" if who else f"↪ {body}"
+        parts.append(body)
+    return "\n".join(p for p in parts if p)
+
+
 def _thread_context(channel: str, thread_ts: str) -> str:
     """Fetch the Slack thread's messages as reference context (data, not commands)."""
     try:
@@ -140,8 +195,8 @@ def _thread_context(channel: str, thread_ts: str) -> str:
         return ""
     lines = []
     for m in msgs:
-        who = _user_name(m.get("user")) or m.get("bot_id") or "?"
-        line = _strip_mention(message_text(m))
+        who = _user_name(m.get("user")) or botallow.identity(m)[1] or "?"
+        line = _strip_mention(_shown_text(m))
         if line:
             lines.append(f"[{who}] {line}")
     return "\n".join(lines)[:8000]   # cap so the prompt stays bounded
@@ -171,10 +226,11 @@ def _channel_context(channel: str) -> str:
     msgs = r.get("messages", []) or []
     lines = []
     for m in reversed(msgs):                      # API is newest-first → chronological
-        if m.get("subtype"):                      # joins/topic changes etc.
+        # joins/topic changes etc. — but an app's own post is content
+        if m.get("subtype") not in (None, "bot_message"):
             continue
-        who = _user_name(m.get("user")) or ("bot" if m.get("bot_id") else "?")
-        line = _strip_mention(message_text(m))
+        who = _user_name(m.get("user")) or botallow.identity(m)[1] or "?"
+        line = _strip_mention(_shown_text(m))
         if line:
             ts = time.strftime("%m-%d %H:%M", time.localtime(float(m.get("ts", "0"))))
             lines.append(f"[{ts} {who}] {line[:400]}")
