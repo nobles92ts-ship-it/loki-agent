@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [v1.11.0] 2026-10-08
+
+Codex can take a restricted request with no tools at all, and Loki does the reading for it — shared folders, spreadsheets, documents in a thread.
 
 ### What you can do now
 
