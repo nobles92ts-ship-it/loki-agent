@@ -55,8 +55,8 @@ the boundary Loki wants. Leave it on.
 - **Group context is what the bot saw.** Bots can't read history they weren't
   present for, so context is the recent messages Loki observed while running,
   held in memory. A restart starts that over.
-- **No clickable checklists or budget buttons.** Those are Block Kit. `!check`
-  is Slack-only; budget mitigations use the text commands
+- **No clickable checklists, polls or budget buttons.** Those are Block Kit.
+  `!check` and the poll requests are Slack-only; budget mitigations use the text commands
   (`!budget sonnet` / `pause` / `resume`).
 - **No `!bot` allowlist.** That's built on Slack bot ids; Telegram ignores
   every bot author outright, as Discord does.

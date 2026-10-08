@@ -454,6 +454,13 @@ MSG: dict[str, dict[str, str]] = {
         "check_owner_only": "Only the owner can create a checklist.",
         "check_none": "No checklist here yet — make one with `!check <items>`.",
         "check_post_fail": "⚠️ Couldn't post the checklist — check the logs.",
+        "poll_busy": "⏳ Busy building other polls — say it again in a moment.",
+        "poll_fail": "⚠️ Couldn't build the poll — try again in a moment.",
+        "poll_no_options": ("I couldn't find options to vote on. Post the candidates "
+                            "(links welcome) and ask again."),
+        "poll_post_fail": "⚠️ Couldn't post the poll — check the logs.",
+        "poll_creator_only": "Only whoever made the poll (or the owner) can do that.",
+        "poll_removed": "🗑️ Poll removed.",
         "tamper_blocked": ("🚨 This run tried to change a permission file. It was "
                            "reverted and the owner was notified — permissions "
                            "only change in the owner's DM."),
@@ -861,6 +868,13 @@ MSG: dict[str, dict[str, str]] = {
         "check_owner_only": "체크리스트 생성은 오너만 할 수 있어.",
         "check_none": "여기엔 아직 체크리스트가 없어 — `!check <항목들>`로 만들어줘.",
         "check_post_fail": "⚠️ 체크리스트를 못 올렸어 — 로그 확인해줘.",
+        "poll_busy": "⏳ 다른 투표를 만드는 중이야. 잠시 뒤 다시 말해줘.",
+        "poll_fail": "⚠️ 투표를 못 만들었어 — 잠시 뒤 다시 말해줘.",
+        "poll_no_options": ("투표로 만들 후보를 못 찾았어. 후보를 올려주고(링크도 같이) "
+                            "다시 말해줘."),
+        "poll_post_fail": "⚠️ 투표를 못 올렸어 — 로그 확인해줘.",
+        "poll_creator_only": "투표를 만든 사람(또는 오너)만 할 수 있어.",
+        "poll_removed": "🗑️ 투표를 지웠어.",
         "tamper_blocked": ("🚨 이번 실행이 권한 파일을 바꾸려 했어. 되돌렸고 오너에게 "
                            "알렸어 — 권한 변경은 오너 DM에서만 가능해."),
         "tamper_alert": ("🚨 *권한 파일이 변경되려 했어* — 되돌렸어.\n"

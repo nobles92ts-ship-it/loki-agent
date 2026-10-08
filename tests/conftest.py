@@ -137,6 +137,7 @@ def _isolate_state(tmp_path, monkeypatch):
                            ratelimit, scheduler, selftest, sessions, usage,
                            workerlock)
     from loki.core.providers import groq
+    from loki.platforms.slack import polls
 
     # a name a test would not pick for itself — `tmp_path/"state"` collides
     # with the several that build their own state dir there
@@ -153,6 +154,7 @@ def _isolate_state(tmp_path, monkeypatch):
             (health, "_FILE", "health.json"),
             (learn, "LEARN_FILE", "learnings.md"),
             (nudge, "_FILE", "nudges.json"),
+            (polls, "_DIR", "polls"),
             (providers, "STATE_FILE", "provider.json"),
             (ratelimit, "RATE_FILE", "ratelimit.json"),
             (scheduler, "SCHED_FILE", "schedules.json"),

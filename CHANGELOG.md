@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### What you can do now
+
+- **Turn a thread's candidate lists into a poll, just by asking.** People post restaurants with links in one reply and dates in another, and the poll was then built by hand in Open Poll+. `@Loki 지금 있는 리스트들 투표로 만들어줘` now reads the thread (outside a thread, the channel's recent talk) and posts one poll: a question per kind of choice, a **Vote** button on every option, the option's name linked when a link was posted for it, and the voters' mentions and counts re-rendered for everyone on each click. Tap again to undo; a pick-one question moves your vote. Anyone who can reach Loki may ask — guests too, under the same budget and hourly cap as any guest request — and the poll's creator or the owner can close it (`투표 마감해줘`) or take it down (`투표 취소해줘`); anyone can ask for the tally (`투표 결과 알려줘`). The model never touches Slack: it reads the talk on the restricted, tool-less route a guest request takes and answers with JSON, and Loki validates it before posting — two or more distinct options per question, plain `http(s)` links, every title and option escaped (a model, or a thread behind it, that names an option `<!channel>` pings no one), the notification text too. A question *about* polls ("투표 만들 수 있어?") is left to the ordinary path. State lives in `state/polls/`; the vote buttons need Interactivity, as checklists do. No deadline timer yet — a poll stays open until it is closed.
+
 ## [v1.11.0] 2026-10-08
 
 Codex can take a restricted request with no tools at all, and Loki does the reading for it — shared folders, spreadsheets, documents in a thread.

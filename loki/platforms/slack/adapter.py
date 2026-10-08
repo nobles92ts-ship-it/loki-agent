@@ -23,7 +23,7 @@ from ...core import (alias, autolisten, blocked, botallow, botmute, brain, budge
                      sessions, usage)
 from ...core.config import log, require, t
 from ...core.prompt import build_prompt
-from . import assistant, checklists
+from . import assistant, checklists, polls
 
 # Optional private command extension — gitignored, workspace-specific heavy
 # commands (see private_commands.example.py). Absent in a clean checkout.
@@ -43,6 +43,7 @@ CHANNEL_CTX_MSGS = int(os.environ.get("LOKI_CHANNEL_CTX_MSGS", "120"))
 
 app = App(token=BOT_TOKEN)
 checklists.register(app)            # clickable-checkbox handler (needs interactivity)
+polls.register(app)                 # vote-button handler (needs interactivity)
 assistant.register(app, ALLOWED_USER, lambda c, ts: _session_key(c, ts))
 BOT_USER_ID: str | None = None      # resolved in run() via auth.test
 BOT_ID: str | None = None           # our own B… id — never allowed to trigger us
@@ -829,6 +830,21 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False,
             return
     except Exception:
         log.exception("checklist handler failed")
+
+    # Polls — anyone who reaches Loki can ask for one ("이 후보들 투표로 만들어줘");
+    # the creator (or owner) closes it. Votes arrive via app.action instead.
+    try:
+        if polls.try_handle({
+                "app": app, "event": event, "text": text, "user": user,
+                "channel": channel, "thread": thread,
+                "thread_root": event.get("thread_ts"),
+                "is_owner": is_owner, "from_bot": from_bot, "org": org,
+                "post": _post, "user_name": _user_name,
+                "thread_context": _thread_context,
+                "channel_context": _channel_context}):
+            return
+    except Exception:
+        log.exception("poll handler failed")
 
     # !summary <channel_id> stays here — it enqueues a job against ANOTHER
     # channel, which is Slack plumbing rather than a plain-text reply.

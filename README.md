@@ -359,6 +359,22 @@ Each item is a ☐/☑ button. Tap it to toggle, and the state **syncs for every
 
 > Clickable toggles need **Interactivity** enabled (app config → **Interactivity & Shortcuts** → toggle on; no Request URL needed with Socket Mode). Apps created from this repo's manifest already have it; older installs flip it on once. Creating a checklist and `done N` work without it — only the buttons need it.
 
+### Polls
+
+Ask in plain words — there is no command to remember. In a thread where people have posted candidates (restaurants with links, dates…):
+
+```
+@Loki turn the lists above into a poll
+```
+
+Loki reads the thread (outside a thread, the channel's recent talk) and posts a poll with a **Vote** button on every option: one question per kind of choice, an option's name linked when a link was posted for it, and the voters' mentions and counts re-rendered for everyone on each click. Tap again to undo; in a pick-one question a new tap moves your vote. **Anyone who can reach Loki can ask for a poll** — guests too, under the same budget and hourly cap as any guest request.
+
+The model only reads the talk and answers with JSON, on the same tool-less route a guest request takes. Loki validates what comes back — two or more distinct options per question, plain `http(s)` links, everything escaped so an option called `<!channel>` pings no one — and only then posts.
+
+Ask for the tally with `poll results` (anyone). `close the poll` or `cancel the poll` is for whoever made it, or the owner. A question *about* polls ("can you make a poll?") goes down the ordinary path. Requests are recognised in Korean (`투표로 만들어줘`, `투표 결과`, `투표 마감해줘`) and English. State persists in `state/polls/`.
+
+> Vote buttons need **Interactivity**, like checklists (see the note above).
+
 ### Budgets — caps that protect your subscription
 
 `GUEST_RATE_PER_HOUR` stops one person spamming you; a **budget** stops everyone together quietly draining a month. Set a daily or weekly total (and per-org totals) and Loki refuses *guests* once it's reached — **you are never capped**, same rule as the throttle.

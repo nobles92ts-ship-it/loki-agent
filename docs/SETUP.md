@@ -58,7 +58,7 @@ Loki serves one platform per process — Slack by default. For Discord, do
    then right-click your name → **Copy User ID** → `.env` as `DISCORD_OWNER_ID`
 6. In `.env` set `LOKI_PLATFORM=discord` (or start it with `python -m loki discord`)
 
-Slack's `!check` clickable checklists are Slack-only; everything else — DMs,
+Slack's `!check` clickable checklists and polls are Slack-only; everything else — DMs,
 mentions, threads, guest scope, orgs, rate limits, schedules — works the same.
 
 ## 2. Run the wizard
