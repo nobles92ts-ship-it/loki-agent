@@ -390,6 +390,8 @@ Guests can only read what you **explicitly share**. On first boot Loki creates `
 
 Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is denied at the tool level on every guest request. Edits apply immediately (no restart). A listed folder is shared **in its entirety**, so never list folders containing secrets.
 
+A folder **outside** `WORK_DIR` — a data folder on another drive, say — can be listed too. It opens as exactly that folder, and only on runs that read through Loki (Codex with `LOKI_RESTRICTED_MODE=sealed`); on Claude the deny list keeps other drives shut regardless. A drive root, or a folder that holds `WORK_DIR`, the worker or your home folder, is refused. Spreadsheets (`.xlsx`) in a shared folder are read as text, one row per line with its column names.
+
 ### Conversation basics
 
 - **Your DM is one running conversation** — just keep typing, no need to repeat yourself. Threads work the same way, each with its own memory.

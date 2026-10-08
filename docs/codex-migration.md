@@ -33,13 +33,17 @@ and turn 2 answers from that text. Rules:
 - Narrower than the Claude grant: the worker tree, `loki/orgs`, credential files
   and hidden or secret-looking path components (`.env`, `*token*`, keys,
   databases, `private`, `credentials`) are excluded,
-  and only text files are read.
+  and only text files and `.xlsx` spreadsheets are read (a row becomes one line
+  with its column names).
+- A manifest folder outside `WORK_DIR` is granted to this reader as exactly that
+  folder — never a drive root, nor a folder holding `WORK_DIR`, the worker or
+  the home folder. Claude runs still deny it.
 - Caps: 300 listed entries, 5000 files walked, 6 files × 12k chars, 40 search
   hits (8 per file), 64 MiB searched, 40k chars per turn.
 
-Not equivalent to Claude: no free browsing beyond one request round, no
-binary/Office files, and listing/search stop at the caps. The owner in a shared
-channel reads the folders that channel's guests can read.
+Not equivalent to Claude: no free browsing beyond two request rounds, no
+binary files other than `.xlsx`, and listing/search stop at the caps. The owner
+in a shared channel reads the folders that channel's guests can read.
 Only the Slack adapter passes the grant; Discord/Telegram guests on sealed get
 no file reads.
 

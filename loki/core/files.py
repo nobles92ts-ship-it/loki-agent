@@ -345,30 +345,44 @@ def _ooxml_text(data: bytes, ext: str) -> str:
                 + "\n".join(t.text or "" for t in _part(z, n).iter(_A + "t"))
                 for i, n in enumerate(slides, 1))
         # xlsx / xlsm: each sheet as tab-separated rows, cells in their columns
-        shared = []
-        if "xl/sharedStrings.xml" in z.namelist():
-            shared = ["".join(t.text or "" for t in si.iter(_X + "t"))
-                      for si in _part(z, "xl/sharedStrings.xml").iter(_X + "si")]
-        targets = {r.get("Id"): r.get("Target", "")
-                   for r in _part(z, "xl/_rels/workbook.xml.rels")}
-        sheets = []
-        for sheet in _part(z, "xl/workbook.xml").iter(_X + "sheet"):
-            target = targets.get(sheet.get(_R + "id"), "")
-            path = target.lstrip("/") if target.startswith("/") else "xl/" + target
-            rows = []
-            for row in _part(z, path).iter(_X + "row"):
-                cells: list[str] = []
-                for c in row.iter(_X + "c"):
-                    if c.get("t") == "inlineStr":
-                        value = "".join(t.text or "" for t in c.iter(_X + "t"))
-                    else:
-                        v = c.find(_X + "v")
-                        value = (v.text or "") if v is not None else ""
-                        if c.get("t") == "s" and value:
-                            value = shared[int(value)]
-                    col = _col(c.get("r")) if c.get("r") else len(cells)
-                    cells += [""] * (col + 1 - len(cells))
-                    cells[col] = value
-                rows.append("\t".join(cells))
-            sheets.append(f"[sheet {sheet.get('name')}]\n" + "\n".join(rows))
-        return "\n\n".join(sheets)
+        return "\n\n".join(f"[sheet {name}]\n" + "\n".join("\t".join(c) for _, c in rows)
+                           for name, rows in _sheet_rows(z))
+
+
+def sheet_rows(data: bytes) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    """An xlsx's sheets as ``(name, rows)``; a row is ``(row number, cells)``
+    with each cell in its column. Empty rows are absent, so numbers can skip."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        return _sheet_rows(z)
+
+
+def _sheet_rows(z: zipfile.ZipFile) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    shared = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        shared = ["".join(t.text or "" for t in si.iter(_X + "t"))
+                  for si in _part(z, "xl/sharedStrings.xml").iter(_X + "si")]
+    targets = {r.get("Id"): r.get("Target", "")
+               for r in _part(z, "xl/_rels/workbook.xml.rels")}
+    sheets = []
+    for sheet in _part(z, "xl/workbook.xml").iter(_X + "sheet"):
+        target = targets.get(sheet.get(_R + "id"), "")
+        path = target.lstrip("/") if target.startswith("/") else "xl/" + target
+        rows = []
+        for row in _part(z, path).iter(_X + "row"):
+            cells: list[str] = []
+            for c in row.iter(_X + "c"):
+                if c.get("t") == "inlineStr":
+                    value = "".join(t.text or "" for t in c.iter(_X + "t"))
+                else:
+                    v = c.find(_X + "v")
+                    value = (v.text or "") if v is not None else ""
+                    if c.get("t") == "s" and value:
+                        value = shared[int(value)]
+                col = _col(c.get("r")) if c.get("r") else len(cells)
+                cells += [""] * (col + 1 - len(cells))
+                cells[col] = value
+            num = row.get("r")
+            prev = rows[-1][0] if rows else 0
+            rows.append((int(num) if num and num.isdigit() else prev + 1, cells))
+        sheets.append((sheet.get("name"), rows))
+    return sheets

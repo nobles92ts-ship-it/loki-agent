@@ -144,6 +144,42 @@ def _allowed_names(manifest: str, work: str) -> set[str]:
     return allowed
 
 
+def _holds(outer: Path, inner: Path) -> bool:
+    try:
+        return (os.path.commonpath([os.path.normcase(str(outer)),
+                                    os.path.normcase(str(inner))])
+                == os.path.normcase(str(outer)))
+    except ValueError:                      # different drives
+        return False
+
+
+def outside_root(path: str) -> Path | None:
+    """A manifest folder outside WORK_DIR, granted as exactly that folder.
+
+    Only runs that read through :mod:`loki.core.allowread` can use it — Claude
+    carries the deny list, which keeps other drives and user profiles shut
+    whatever the manifest says. Refused: a path that a link redirects anywhere
+    along the way (where it resolves must be what was written), a drive root,
+    and any folder holding WORK_DIR, the worker or the home folder — one such
+    line would reopen everything the per-folder rules keep shut."""
+    try:
+        written = Path(os.path.abspath(path))
+        real = written.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if (not real.is_dir()
+            or os.path.normcase(str(real)) != os.path.normcase(str(written))
+            or real == Path(real.anchor)):
+        return None
+    for kept in (config.WORK_DIR, config.BASE, os.path.expanduser("~")):
+        try:
+            if _holds(real, Path(kept).resolve()):
+                return None
+        except (OSError, RuntimeError, ValueError):
+            return None
+    return real
+
+
 def read_roots(manifest: str) -> list[Path]:
     """The folders a manifest grants, as paths — for runs that cannot carry the
     deny list and read through :mod:`loki.core.allowread` instead."""
@@ -153,6 +189,13 @@ def read_roots(manifest: str) -> list[Path]:
     for name in sorted(_allowed_names(manifest, work)):
         root = Path(work) / name
         if root.is_dir() and not root.is_symlink() and not isjunction(root):
+            roots.append(root)
+    for m in _PATH_LINE_RE.finditer(manifest):
+        lexical = os.path.abspath(m.group(1)).replace("\\", "/").lower()
+        if lexical == work.lower() or lexical.startswith(work.lower() + "/"):
+            continue                        # a WORK_DIR grant, handled above
+        root = outside_root(m.group(1))
+        if root is not None and root not in roots:
             roots.append(root)
     return roots
 
