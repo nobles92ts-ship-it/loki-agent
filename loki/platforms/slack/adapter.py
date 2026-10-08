@@ -215,7 +215,11 @@ def slack_ts(epoch: float) -> str:
 
 
 def _channel_context(channel: str) -> str:
-    """Fetch the channel's recent messages (data, not commands). Chronological."""
+    """Fetch the channel's recent messages (data, not commands). Chronological.
+
+    Over the 10,000-char budget it is the oldest messages that go, whole: a
+    mention is usually about what was just said.
+    """
     oldest = slack_ts(time.time() - CHANNEL_CTX_DAYS * 86400)
     try:
         r = app.client.conversations_history(
@@ -224,8 +228,8 @@ def _channel_context(channel: str) -> str:
         log.exception("channel history fetch failed")
         return ""
     msgs = r.get("messages", []) or []
-    lines = []
-    for m in reversed(msgs):                      # API is newest-first → chronological
+    lines, size = [], 0
+    for m in msgs:                                # API is newest-first
         # joins/topic changes etc. — but an app's own post is content
         if m.get("subtype") not in (None, "bot_message"):
             continue
@@ -233,8 +237,12 @@ def _channel_context(channel: str) -> str:
         line = _strip_mention(_shown_text(m))
         if line:
             ts = time.strftime("%m-%d %H:%M", time.localtime(float(m.get("ts", "0"))))
-            lines.append(f"[{ts} {who}] {line[:400]}")
-    return "\n".join(lines)[:10000]
+            line = f"[{ts} {who}] {line[:400]}"
+            if size + len(line) > 10000:          # full — the rest are older
+                break
+            lines.append(line)
+            size += len(line) + 1                 # + the "\n" that joins it
+    return "\n".join(reversed(lines))             # → chronological
 
 
 # ─────────────────────────── attachments ───────────────────────────
