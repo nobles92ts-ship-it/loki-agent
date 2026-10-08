@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import config, health
+from . import config, health, workerlock
 from .config import log
 
 TASK_MAIN = "Loki_Agent"
@@ -68,6 +68,15 @@ def ensure() -> int:
         print(f"[OK] worker alive (pid {s['pid']}) — nothing to do")
         return 0
     reason = s.get("reason", "unknown")
+    if (reason == "stale_heartbeat" and s.get("platform")
+            and workerlock.holder(s["platform"]) == s.get("pid")):
+        # Still running, no longer listening, still holding the worker lock:
+        # a new worker would find the lock and step aside, so this one goes
+        # first. Matching the lock holder, not just a live pid, keeps a pid
+        # that was reused after a reboot from being killed.
+        log.warning("watchdog stopping deaf worker pid=%s", s["pid"])
+        stop()
+        time.sleep(1.0)                        # let the socket close cleanly
     pid = spawn()
     print(f"[..] worker was down ({reason}) — started pid {pid}")
     log.warning("watchdog restarted worker (was: %s)", reason)

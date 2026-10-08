@@ -40,6 +40,16 @@ def _run_worker(name: str) -> int:
               f"{', '.join(PLATFORMS)}", file=sys.stderr)
         return 2
     config.validate_core()
+    # Before the adapter is even imported (Slack's App() calls the API at
+    # import): a second connection on the same app token splits the events.
+    from loki.core import workerlock
+    if not workerlock.claim(name):
+        pid = workerlock.holder(name) or "?"
+        config.log.warning("%s worker already running (pid %s) — this one exits",
+                           name, pid)
+        print(f"[loki] A {name} worker is already running (pid {pid}) — "
+              "not starting a second one.", file=sys.stderr)
+        return 0
     if name == "discord":
         from loki.platforms.discord import adapter
     elif name == "telegram":

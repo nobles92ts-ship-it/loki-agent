@@ -130,7 +130,8 @@ def _isolate_state(tmp_path, monkeypatch):
     """
     from loki.core import (account, autolisten, blocked, botallow, botmute,
                            budget, goals, health, learn, nudge, providers,
-                           ratelimit, scheduler, selftest, sessions, usage)
+                           ratelimit, scheduler, selftest, sessions, usage,
+                           workerlock)
     from loki.core.providers import groq
 
     # a name a test would not pick for itself — `tmp_path/"state"` collides
@@ -156,6 +157,9 @@ def _isolate_state(tmp_path, monkeypatch):
             (usage, "USAGE_FILE", "usage.jsonl"),
             (groq, "_STORE", "groq")):
         monkeypatch.setattr(mod, attr, state / name)
+    # one lock file per platform, so the module binds the folder, not a file;
+    # a test on the real one would be fighting the machine's running worker
+    monkeypatch.setattr(workerlock, "_DIR", state)
     # autolisten caches its file in memory at import, so the redirect alone
     # would still let one test's zones leak into the next.
     monkeypatch.setattr(autolisten, "_state",

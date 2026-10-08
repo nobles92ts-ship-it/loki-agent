@@ -429,6 +429,14 @@ folder launcher plus a 5-minute watchdog task on Windows (no administrator
 needed), a systemd user unit with `Restart=on-failure` on Linux, a launchd
 agent with `KeepAlive` on macOS. Undo it with `gateway uninstall`.
 
+Only one worker runs per platform. Whatever starts it — the Startup launcher,
+the watchdog, `run_worker.vbs`, a terminal — a worker takes a lock in `state/`
+before it connects, and a second one finds the lock held and exits. So a
+launcher left over from `setup.ps1 -Autostart` is harmless. Delete it if you
+like. ⚠️ The lock is per install: **two separate copies of Loki on one app
+token still split events between them**, which looks like Loki randomly
+ignoring messages.
+
 The worker stamps `state/health.json` on a timer and after every finished job.
 `status` reports down when the process is gone **or** when the heartbeat has
 gone stale — a hung worker that's still technically running is just as broken

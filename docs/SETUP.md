@@ -168,9 +168,11 @@ a task with an `ONLOGON` trigger precisely because that trigger requires
 elevation, and a chat bot's setup has no business asking for it.
 
 If you previously ran `setup.ps1 -Autostart`, that wrote its own launcher into
-the same folder. Delete the old one — **two launchers means two workers on one
-app token, and the platform will split events between them**, which looks like
-Loki randomly ignoring messages.
+the same folder. It does no harm now: a worker takes a lock in `state/` before
+it connects, so the second launcher's worker finds it held and exits. Delete it
+anyway if you like. The lock is per install, though — **two separate copies of
+Loki on one app token still split events between them**, which looks like Loki
+randomly ignoring messages.
 
 Undo with `gateway uninstall`. Check on it any time:
 
