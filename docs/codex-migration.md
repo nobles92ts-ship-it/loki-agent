@@ -35,11 +35,11 @@ and turn 2 answers from that text. Rules:
   databases, `private`, `credentials`) are excluded,
   and only text files are read.
 - Caps: 300 listed entries, 5000 files walked, 6 files × 12k chars, 40 search
-  hits, 8 MiB searched, 40k chars per turn.
+  hits (8 per file), 64 MiB searched, 40k chars per turn.
 
 Not equivalent to Claude: no free browsing beyond one request round, no
 binary/Office files, and listing/search stop at the caps. The owner in a shared
-channel has no manifest, so a sealed owner-channel run reads nothing.
+channel reads the folders that channel's guests can read.
 Only the Slack adapter passes the grant; Discord/Telegram guests on sealed get
 no file reads.
 

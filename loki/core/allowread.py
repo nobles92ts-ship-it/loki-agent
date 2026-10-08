@@ -35,8 +35,9 @@ MAX_WALK = 5000             # files visited per walk, so a huge share can't stal
 MAX_READ_FILES = 6
 MAX_FILE_CHARS = 12000
 MAX_SEARCH_HITS = 40
+MAX_HITS_PER_FILE = 8       # so one log or json cannot take every hit
 MAX_FILE_BYTES = 2 * 1024 * 1024
-MAX_SEARCH_BYTES = 8 * 1024 * 1024
+MAX_SEARCH_BYTES = 64 * 1024 * 1024   # a whole share, not just what sorts first
 MAX_TOTAL_CHARS = 40000
 MAX_KEYWORDS = 5
 
@@ -93,22 +94,27 @@ def _valid_root(root: Path) -> Path | None:
         return None
 
 
-def inside(path: Path | str, roots: list[Path]) -> Path | None:
+def _valid_roots(roots: list[Path]) -> list[Path]:
+    return [rr for r in roots if (rr := _valid_root(r)) is not None]
+
+
+def inside(path: Path | str, roots: list[Path], _fixed=None) -> Path | None:
     """The resolved file when it is a readable text file under a root, else None.
 
     Resolution happens first, so a symlink or junction is judged by where it
-    leads, not by where it sits."""
+    leads, not by where it sits. ``_fixed`` is a walk's ``(valid roots,
+    excluded)``, worked out once per walk instead of once per file."""
     try:
         rp = Path(path).resolve(strict=True)
     except Exception:
         return None
     if not rp.is_file():
         return None
-    grants = [rr for r in roots if (rr := _valid_root(r)) is not None
-              and is_under(rp, rr)]
+    valid, excluded = _fixed or (_valid_roots(roots), _excluded())
+    grants = [rr for rr in valid if is_under(rp, rr)]
     if not grants:
         return None
-    if any(is_under(rp, x) for x in _excluded()):
+    if any(is_under(rp, x) for x in excluded):
         return None
     # Direct read requests must obey the same hidden-directory boundary as
     # listing/search; otherwise a guessed path could reach .git or a vault.
@@ -145,6 +151,7 @@ def _from_label(label: str, roots: list[Path]) -> Path | None:
 def _walk(roots: list[Path]):
     """Readable files under the roots, never following a link out."""
     seen = 0
+    fixed = (_valid_roots(roots), _excluded())
     for root in roots:
         if _valid_root(root) is None:
             continue
@@ -158,7 +165,7 @@ def _walk(roots: list[Path]):
                 seen += 1
                 if seen > MAX_WALK:
                     return
-                rp = inside(Path(dirpath) / name, roots)
+                rp = inside(Path(dirpath) / name, roots, fixed)
                 if rp is not None:
                     yield rp
 
@@ -178,12 +185,21 @@ def listing(roots: list[Path]) -> str:
     return "\n".join(names)
 
 
+def _squash(s: str) -> str:
+    """``회의 노트`` and ``회의_노트.md`` compare equal."""
+    return re.sub(r"[\s_\-]+", "", s.lower())
+
+
 def search(roots: list[Path], keywords: list) -> str:
+    """Matching lines, most relevant file first: the one whose name carries the
+    most keywords, then the one matching the most different keywords, then the
+    most lines. Walk order only breaks ties."""
     kws = [str(k).strip()[:60] for k in keywords[:MAX_KEYWORDS] if str(k).strip()]
     if not kws:
         return ""
     lows = [k.lower() for k in kws]
-    hits: list[str] = []
+    squashed = [s for k in lows if (s := _squash(k))]
+    ranked = []
     scanned = 0
     for rp in _walk(roots):
         remaining = MAX_SEARCH_BYTES - scanned
@@ -193,14 +209,23 @@ def search(roots: list[Path], keywords: list) -> str:
             with rp.open("rb") as f:
                 data = f.read(min(MAX_FILE_BYTES, remaining) + 1)
             scanned += len(data)
-            lines = data[:remaining].decode("utf-8", errors="replace").splitlines()
+            text = data[:remaining].decode("utf-8", errors="replace")
         except OSError:
             continue
-        for i, line in enumerate(lines):
-            if any(k in line.lower() for k in lows):
-                hits.append(f"{_label(rp, roots)}:{i + 1}: {line.strip()[:240]}")
-                if len(hits) >= MAX_SEARCH_HITS:
-                    return "\n".join(hits)
+        if not any(k in text.lower() for k in lows):
+            continue                        # most files: no line to look at
+        found = [(i, line) for i, line in enumerate(text.splitlines())
+                 if any(k in line.lower() for k in lows)]
+        if found:
+            named = sum(k in _squash(rp.name) for k in squashed)
+            kinds = sum(any(k in line.lower() for _, line in found) for k in lows)
+            ranked.append((-named, -kinds, -len(found), len(ranked), rp, found))
+    hits: list[str] = []
+    for *_, rp, found in sorted(ranked):
+        for i, line in found[:MAX_HITS_PER_FILE]:
+            hits.append(f"{_label(rp, roots)}:{i + 1}: {line.strip()[:240]}")
+            if len(hits) >= MAX_SEARCH_HITS:
+                return "\n".join(hits)
     return "\n".join(hits)
 
 

@@ -132,6 +132,41 @@ def test_search_has_a_total_byte_budget(tree, monkeypatch):
     assert allowread.search(tree["roots"], ["release"]) == ""
 
 
+def test_the_most_relevant_file_comes_first_wherever_it_sits(tree):
+    # 2026-10-08: asked what happens at HP 0, a guest's search filled its 40
+    # hits with TC artifacts that sort first; the design page itself, deep in
+    # the walk, never appeared. Hits are ranked by relevance, not walk order.
+    early = tree["shared"] / "aaa"
+    early.mkdir()
+    for i in range(50):
+        (early / f"{i:02}.md").write_text("death mentioned once\n", encoding="utf-8")
+    late = tree["shared"] / "zz_system"
+    late.mkdir()
+    (late / "design.md").write_text(
+        "# death and revive\n" + "revive at town after death\n" * 3, encoding="utf-8")
+    hits = allowread.search(tree["roots"], ["death", "revive"]).splitlines()
+    assert hits[0].startswith("docs/zz_system/design.md:")
+
+
+def test_a_page_named_for_the_topic_beats_a_dump_of_everything(tree):
+    # The share also holds the whole wiki concatenated into one file; it matches
+    # every keyword more often than the page that is actually about the topic.
+    (tree["shared"] / "aaa_full.md").write_text("death and revive, revive\n" * 50,
+                                                encoding="utf-8")
+    page = tree["shared"] / "zz_system"
+    page.mkdir()
+    (page / "death_and_revive.md").write_text("# death and revive\nrevive in town\n",
+                                              encoding="utf-8")
+    hits = allowread.search(tree["roots"], ["death and revive", "revive"]).splitlines()
+    assert hits[0].startswith("docs/zz_system/death_and_revive.md:")
+
+
+def test_one_file_cannot_take_every_search_hit(tree):
+    (tree["shared"] / "aaa_log.md").write_text("release\n" * 100, encoding="utf-8")
+    out = allowread.search(tree["roots"], ["release"])
+    assert "docs/sub/notes.txt:1:" in out
+
+
 def test_manifest_grants_become_roots(tree):
     manifest = f"## Allowed paths\n- {tree['shared']}\\sub\n"
     assert scope.read_roots(manifest) == [Path(str(tree["work"].resolve())) / "docs"]

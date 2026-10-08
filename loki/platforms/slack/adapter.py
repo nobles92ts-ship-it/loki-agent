@@ -536,14 +536,13 @@ def _handle(job: dict) -> None:
         # path carries the same injection risk as a guest's.
         #
         # LOKI_OWNER_MODE=restricted puts the DM on that route as well. Sealed,
-        # it reads only what Loki hands it — so it gets the guests' shared
-        # folders through Loki, and its screenshots ride on the prompt.
+        # either reads only what Loki hands it — so both get the guests' shared
+        # folders through Loki (a channel's guests can read them anyway), and
+        # screenshots ride on the prompt.
         read_roots = None
         if job["user"] == ALLOWED_USER:
             guest_settings, run_cwd = None, None
-            if not owner_dm:
-                guest_settings = guard.settings_file()
-            elif not unguarded:
+            if not unguarded:
                 guest_settings = guard.settings_file()
                 read_roots = scope.read_roots(scope.guest_scope()[1])
         else:

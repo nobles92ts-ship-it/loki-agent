@@ -79,11 +79,16 @@ def test_restricted_dm_is_snapshot_guarded_like_a_channel(home, monkeypatch):
     assert taken
 
 
-def test_a_channel_is_unchanged_either_way(home, monkeypatch):
-    monkeypatch.setattr(config, "OWNER_MODE", "restricted")
+@pytest.mark.parametrize("mode", ["full", "restricted"])
+def test_your_channel_mention_reads_the_shared_folders(home, monkeypatch, mode):
+    # 2026-10-08: the owner asked a design question in a shared channel and got
+    # "can't tell from the context" — the same question in the DM was answered
+    # from the shared folders. The channel route ran sealed with nothing to read.
+    monkeypatch.setattr(config, "OWNER_MODE", mode)
     seen = _capture(home, monkeypatch)
     home._handle(_dm_job(channel="C0PUB", thread="1.1"))
-    assert seen["settings_file"] and seen["read_roots"] is None
+    assert seen["settings_file"]                         # still the restricted route
+    assert [p.name for p in seen["read_roots"]] == ["Shared"]
 
 
 # ── the wire: on Codex it really is sealed ───────────────────────────────────
