@@ -123,6 +123,40 @@ def _outside_work_denies(work: str) -> list[str]:
     return pats + _siblings_along(work)
 
 
+def _allowed_names(manifest: str, work: str) -> set[str]:
+    """The top-level WORK_DIR entries a manifest grants (a deeper path grants
+    its whole top-level folder — the same unit the deny list works in)."""
+    allowed: set[str] = set()
+    for m in _PATH_LINE_RE.finditer(manifest):
+        p = m.group(1).replace("\\", "/").rstrip("/")
+        try:
+            lexical = os.path.abspath(p).replace("\\", "/")
+            rp = str(Path(p).resolve()).replace("\\", "/")
+        except Exception:
+            continue
+        if (lexical.lower().startswith(work.lower() + "/")
+                and rp.lower().startswith(work.lower() + "/")):
+            name = lexical[len(work) + 1:].split("/")[0]
+            # A manifest path through a replaced top-level junction must not
+            # silently grant the junction's target instead.
+            if name.lower() == rp[len(work) + 1:].split("/")[0].lower():
+                allowed.add(name)           # top-level name only
+    return allowed
+
+
+def read_roots(manifest: str) -> list[Path]:
+    """The folders a manifest grants, as paths — for runs that cannot carry the
+    deny list and read through :mod:`loki.core.allowread` instead."""
+    work = str(Path(config.WORK_DIR).resolve()).replace("\\", "/")
+    roots = []
+    isjunction = getattr(os.path, "isjunction", lambda _: False)
+    for name in sorted(_allowed_names(manifest, work)):
+        root = Path(work) / name
+        if root.is_dir() and not root.is_symlink() and not isjunction(root):
+            roots.append(root)
+    return roots
+
+
 def _denies_for(manifest: str) -> list[str]:
     """Manifest text → deny pattern list (shared by guest and org tiers)."""
     work = str(Path(config.WORK_DIR).resolve()).replace("\\", "/")
@@ -135,15 +169,7 @@ def _denies_for(manifest: str) -> list[str]:
     # orgs/** deny below is the scar from the first time that happened; the
     # registry then leaked again through its generated copy in state/. Grant
     # folders through the manifest instead, where the tier system can see them.
-    allowed: set[str] = set()
-    for m in _PATH_LINE_RE.finditer(manifest):
-        p = m.group(1).replace("\\", "/").rstrip("/")
-        try:
-            rp = str(Path(p).resolve()).replace("\\", "/")
-        except Exception:
-            continue
-        if rp.lower().startswith(work.lower() + "/"):
-            allowed.add(rp[len(work) + 1:].split("/")[0])    # top-level name only
+    allowed = _allowed_names(manifest, work)
 
     # static denies: no skills/shell/subagents, no ~/.claude, no other roots
     pats = ["Skill", "Bash", "Task",

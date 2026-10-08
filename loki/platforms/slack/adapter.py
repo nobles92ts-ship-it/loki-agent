@@ -397,6 +397,7 @@ def _handle(job: dict) -> None:
         # An owner talking in a *channel* is protected too: _channel_context
         # feeds other people's messages into a bypassPermissions run, so that
         # path carries the same injection risk as a guest's.
+        read_roots = None
         if job["user"] == ALLOWED_USER:
             guest_settings, run_cwd = None, None
             if not owner_dm:
@@ -405,12 +406,13 @@ def _handle(job: dict) -> None:
             # org members get their org's manifest; unaffiliated → loki.md
             guest_settings, manifest = scope.write_scope_settings(job.get("org"))
             run_cwd = str(scope.loki_dir())
+            read_roots = scope.read_roots(manifest)
             prompt = t("guest_scope_note", manifest=manifest[:2500]) + prompt
 
         t0 = time.time()
         res = brain.run_claude(prompt, resume_id, perm_mode,
                                settings_file=guest_settings, cwd=run_cwd,
-                               job=job)
+                               job=job, read_roots=read_roots)
         if job.get("cancelled"):           # killed via !cancel/!stop — stay quiet
             return
 
@@ -420,7 +422,7 @@ def _handle(job: dict) -> None:
             sessions.reset(skey)
             res = brain.run_claude(prompt, None, perm_mode,
                                    settings_file=guest_settings, cwd=run_cwd,
-                                   job=job)
+                                   job=job, read_roots=read_roots)
             if job.get("cancelled"):
                 return
             if not res["error"]:

@@ -16,6 +16,16 @@ versions and the file has not.
 ``codex exec resume`` accepts neither ``--sandbox`` nor ``--cd``, so the
 permission mode travels as ``-c`` config overrides (accepted by both
 subcommands) and the working directory travels as the spawn's own cwd.
+
+**Sealed runs.** Codex cannot carry Loki's per-request deny rules: on Windows
+its sandbox reads the whole disk or, with a narrowed read set, refuses to start
+(see docs/codex-migration.md). What it *can* do is run with no tools at all, and
+:func:`run_sealed` is that mode — no user config (so no MCP servers), every
+tool-bearing feature off (shell, code-mode exec, ChatGPT connectors, plugins,
+sub-agent tools fall with them), a read-only sandbox and an empty child
+environment behind that, and a process environment cut down to what the CLI
+needs to find its own login. A sealed answer can only use what is in the
+prompt. Measured, not assumed — the canary probes are in the migration doc.
 """
 from __future__ import annotations
 
@@ -31,9 +41,31 @@ from . import base
 NAME = "codex"
 LABEL = "Codex CLI"
 SANDBOX = False         # no per-request deny rules → owner DM / console only
+SEALED = True           # …but run_sealed can serve a restricted request tool-less
 PLAN = "ChatGPT Plus/Pro plan (flat) when signed in, not an API key"
 
 _STRIP_EXACT = {"OPENAI_API_KEY", "OPENAI_BASE_URL"}
+
+# Every feature that hands the model a tool. `apps` is the one that matters
+# most: without it gone, --ignore-user-config still leaves the ChatGPT account's
+# connectors (Atlassian, Gmail, Drive, Slack…) callable. code_mode_host off makes
+# the remaining `exec` tool fail closed; sub-agents inherit this same set.
+_SEALED_OFF = ("shell_tool", "unified_exec", "shell_snapshot", "code_mode_host",
+               "apps", "plugins", "remote_plugin", "memories", "hooks",
+               "computer_use", "browser_use", "browser_use_external",
+               "in_app_browser", "multi_agent", "image_generation", "view_image",
+               "goals", "tool_suggest", "skill_search", "workspace_dependencies")
+
+# What the CLI itself needs to start and find its login under the user profile.
+# Anything else in Loki's environment — Slack, Jira and Claude tokens — stays out.
+_SEALED_ENV_KEEP = {
+    "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "SYSTEMDRIVE",
+    "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME", "APPDATA", "LOCALAPPDATA",
+    "TEMP", "TMP", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
+    "PROGRAMW6432", "USERNAME", "COMPUTERNAME", "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE", "OS", "CODEX_HOME", "HTTP_PROXY", "HTTPS_PROXY",
+    "NO_PROXY", "SSL_CERT_FILE", "LANG",
+}
 
 # A refresh token that has already been spent, and other "log in again" states.
 # Worth naming: it looks like a model failure in the stream but no amount of
@@ -85,16 +117,48 @@ def _mode_flags(permission_mode: str) -> list[str]:
     return ["--dangerously-bypass-approvals-and-sandbox"]
 
 
-def _build(resume_id: str | None, permission_mode: str, last_file: str) -> list[str]:
+def sealed_flags() -> list[str]:
+    """No user config, no rules, no tool-bearing feature; read-only beneath."""
+    flags = ["--ignore-user-config", "--ignore-rules",
+             "-c", 'approval_policy="never"', "-c", 'sandbox_mode="read-only"',
+             "-c", 'web_search="disabled"', "-c", "include_apply_patch_tool=false",
+             "-c", 'shell_environment_policy.inherit="none"',
+             "-c", "project_doc_max_bytes=0"]
+    for feature in _SEALED_OFF:
+        flags += ["--disable", feature]
+    return flags
+
+
+def sealed_env() -> dict[str, str]:
+    """An allowlisted environment, not a stripped one: a new secret added to
+    Loki's .env must not reach a sealed run just because nobody listed it."""
+    env = {k: v for k, v in os.environ.items() if k.upper() in _SEALED_ENV_KEEP}
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
+def sealed_cwd() -> str:
+    """An empty folder outside any repo, so no AGENTS.md rides into the run."""
+    path = os.path.join(tempfile.gettempdir(), "loki_codex_sealed")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _build(resume_id: str | None, permission_mode: str, last_file: str,
+           flags: list[str] | None = None,
+           images: tuple[str, ...] = ()) -> list[str]:
     cmd = [command(), "exec"]
     if resume_id:
         cmd += ["resume", resume_id]
-    cmd += ["--json", "--skip-git-repo-check", "--color", "never",
+    # `exec resume` does not accept --color; JSONL output needs no color flag.
+    cmd += ["--json", "--skip-git-repo-check",
             "--output-last-message", last_file]
-    cmd += _mode_flags(permission_mode)
+    cmd += _mode_flags(permission_mode) if flags is None else flags
     model = os.environ.get("CODEX_MODEL", "").strip()
     if model:
         cmd += ["--model", model]
+    for image in images:
+        cmd += ["--image", image]
     cmd.append("-")                     # prompt arrives on stdin
     return cmd
 
@@ -105,12 +169,29 @@ def run(prompt: str, resume_id: str | None, permission_mode: str,
     if settings_file:
         return base.fail(config.t("provider_no_sandbox", provider=LABEL),
                          resume_id, NAME)
+    return _run(prompt, resume_id, cwd, base.clean_env((), _STRIP_EXACT), job,
+                permission_mode)
 
+
+def run_sealed(prompt: str, resume_id: str | None, cwd: str | None = None,
+               job: dict | None = None,
+               images: tuple[str, ...] = ()) -> dict:
+    """A restricted request with no tools at all. ``cwd`` is ignored on
+    purpose — the caller's folder (a guest's loki dir) means nothing to a run
+    that cannot read, and its AGENTS.md would only leak into the context.
+    ``images`` are attached to the prompt itself, the one way a tool-less run
+    can see a screenshot."""
+    return _run(config.t("sealed_note") + prompt, resume_id, sealed_cwd(),
+                sealed_env(), job, "", sealed_flags(), tuple(images))
+
+
+def _run(prompt: str, resume_id: str | None, cwd: str | None,
+         env: dict[str, str], job: dict | None, permission_mode: str,
+         flags: list[str] | None = None, images: tuple[str, ...] = ()) -> dict:
     fd, last_file = tempfile.mkstemp(prefix="loki_codex_", suffix=".txt")
     os.close(fd)
     try:
-        cmd = _build(resume_id, permission_mode, last_file)
-        env = base.clean_env((), _STRIP_EXACT)
+        cmd = _build(resume_id, permission_mode, last_file, flags, images)
         try:
             out, err, rc, expired = base.spawn(cmd, prompt, cwd, env, job)
         except FileNotFoundError:

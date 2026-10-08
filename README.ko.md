@@ -78,6 +78,7 @@ cd loki-agent
 | `ALLOWED_USER_ID` | — (필수) | 내 Slack 멤버 ID. **없으면 부팅 거부(fail-closed).** |
 | `WORK_DIR` | — (필수) | Claude가 작업할 디렉토리 |
 | `CLAUDE_PERMISSION_MODE` | `plan` | `plan`=읽기전용(기본) · `bypassPermissions`=전체 쓰기/실행 — opt-in, [SECURITY](docs/SECURITY.md) 필독 |
+| `LOKI_RESTRICTED_MODE` | `fallback` | 선택한 제공자가 Claude 차단 규칙을 못 지킬 때(Codex) 게스트·공유 채널 요청을 어떻게 돌릴지. `fallback`=Claude로 실행 · `sealed`=Codex에서 도구 0개로 실행, 게스트 공유 폴더는 Loki가 대신 읽음 — [codex-migration](docs/codex-migration.md) 참고 |
 | `CLAUDE_MODEL` | 계정 기본 | 예: `sonnet` (한도 절약) |
 | `TIMEOUT_SEC` | `300` | 요청당 타임아웃 |
 | `JOB_CONCURRENCY` | `2` | 동시 Claude 작업 수 (같은 대화는 항상 순서 유지) |

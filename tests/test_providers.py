@@ -18,6 +18,7 @@ def clean(tmp_path, monkeypatch):
     """A registry with its own state file, always starting on the default."""
     monkeypatch.setattr(providers, "STATE_FILE", tmp_path / "provider.json")
     monkeypatch.setattr(config, "PROVIDER", "claude")
+    monkeypatch.setattr(config, "RESTRICTED_MODE", "fallback")
     monkeypatch.setattr(config, "WORK_DIR", str(tmp_path))
     # Gemini refuses to spawn without a cached sign-in (see gemini.run — an
     # unauthenticated CLI eats the prompt through its login prompt). These

@@ -16,6 +16,10 @@ In practice: your own DM and the terminal console follow the switch; guests,
 and you in a shared channel, always get the sandboxed provider. A provider
 switch must not be able to quietly widen what a stranger can read.
 
+The one exception narrows rather than widens: with ``LOKI_RESTRICTED_MODE=
+sealed``, a provider that declares ``SEALED`` serves those requests itself with
+no tools at all (:func:`sealable`). Nothing is readable, so nothing is wider.
+
 Switching does **not** clear remembered conversations, because it does not have
 to. A session id belongs to the provider that issued it, so :mod:`loki.core.
 sessions` files them under the provider's name and a switch simply looks at a
@@ -35,7 +39,7 @@ from __future__ import annotations
 import json
 import threading
 
-from .. import config
+from .. import allowread, config
 from ..config import log
 from . import antigravity, base, claude, codex, gemini, groq, kimi
 
@@ -123,13 +127,28 @@ def get(spec: str | None):
 
 
 # ─────────────────────────── running a turn ───────────────────────────
+def sealable(mod) -> bool:
+    """May a restricted request run on ``mod`` with every tool taken away?
+
+    Only when the owner opted in (``LOKI_RESTRICTED_MODE=sealed``) *and* the
+    provider has a measured tool-less mode. The model cannot read directly;
+    Slack guest grants can be supplied by Loki's capped host-side reader.
+    """
+    return config.RESTRICTED_MODE == "sealed" and bool(getattr(mod, "SEALED", False))
+
+
 def run(prompt: str, resume_id: str | None,
         permission_mode: str | None = None,
         settings_file: str | None = None,
         cwd: str | None = None,
         job: dict | None = None,
-        provider: str | None = None) -> dict:
-    """One turn, on the chosen provider — or on Claude when a sandbox is needed.
+        provider: str | None = None,
+        read_roots: list | None = None) -> dict:
+    """One turn on the chosen provider, sealed Codex, or Claude fallback.
+
+    ``read_roots``: the folders a guest's manifest grants. Claude enforces those
+    through ``settings_file`` and ignores this; a sealed run reads them through
+    :mod:`loki.core.allowread` instead.
 
     Returns the contract every caller already expects:
     ``{text, session_id, error, reason, provider}``.
@@ -137,6 +156,12 @@ def run(prompt: str, resume_id: str | None,
     mode = permission_mode or config.PERMISSION_MODE
     mod = get(provider)
     if settings_file and not getattr(mod, "SANDBOX", False):
+        if sealable(mod):
+            log.info("provider %s cannot hold a sandbox — this request runs "
+                     "sealed (no tools)", mod.NAME)
+            if read_roots:
+                return allowread.run(mod, prompt, resume_id, read_roots, job=job)
+            return mod.run_sealed(prompt, resume_id, cwd=cwd, job=job)
         log.info("provider %s cannot hold a sandbox — this request runs on %s",
                  mod.NAME, FALLBACK.NAME)
         mod = FALLBACK

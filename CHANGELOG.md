@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### What you can do now
+
+- **On Codex, a restricted request can run sealed — with no tools at all.** A guest's request, or yours in a shared channel, is fenced by Claude Code deny rules that Codex cannot carry, and Codex's own permission profiles cannot say "deny everything except these folders" on Windows, so every such request fell back to Claude. `LOKI_RESTRICTED_MODE=sealed` runs them on Codex with every tool removed instead: no MCP servers or connectors, no shell, a read-only sandbox, an allowlisted environment and an empty working folder. A guest still reads its shared folders — Loki reads them in Python and hands the text over, and every path must land inside a granted folder. The default, `fallback`, keeps running them on Claude. The measurements are in `docs/codex-migration.md`.
+
 ## [v1.10.1] 2026-08-12
 
 Two fixes, both of the same kind: something reported success while doing nothing.

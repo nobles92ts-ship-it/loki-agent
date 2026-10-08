@@ -40,6 +40,7 @@ _QUOTA_MARKS = (
     "rate limit", "usage limit", "quota", "limit reached", "session limit",
     "hit your", "resource_exhausted", "429", "too many requests",
     "insufficient_quota", "over capacity",
+    "out of credits",       # codex on a ChatGPT workspace whose credits ran out
 )
 _QUOTA_STATUS = (429, 529)
 
