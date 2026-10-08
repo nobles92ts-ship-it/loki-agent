@@ -11,6 +11,7 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 from slack_bolt import App
@@ -197,9 +198,14 @@ def _thread_context(channel: str, thread_ts: str) -> str:
     for m in msgs:
         who = _user_name(m.get("user")) or botallow.identity(m)[1] or "?"
         line = _strip_mention(_shown_text(m))
+        attached = " ".join(f"📎 {f['name']}" for f in m.get("files") or []
+                            if f.get("name"))
+        line = "\n".join(p for p in (line, attached) if p)
         if line:
             lines.append(f"[{who}] {line}")
-    return "\n".join(lines)[:8000]   # cap so the prompt stays bounded
+    text = "\n".join(lines)[:8000]   # cap so the prompt stays bounded
+    docs = _documents(msgs)          # their own budget, after the talk
+    return f"{text}\n\n{docs}" if docs else text
 
 
 def slack_ts(epoch: float) -> str:
@@ -246,6 +252,70 @@ def _channel_context(channel: str) -> str:
 
 
 # ─────────────────────────── attachments ───────────────────────────
+MAX_CTX_DOCS = 4        # documents read into one thread's context, newest first
+
+
+def _fetch(url: str) -> bytes | None:
+    """A Slack-hosted file's bytes, or None — failed, over the cap, or not
+    Slack's. The bot token rides along, so it only ever goes to Slack: a file
+    in a thread can be anyone's, and its URL is the one thing we would trust."""
+    parts = urllib.parse.urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not (host == "slack.com"
+                                       or host.endswith(".slack.com")):
+        log.warning("refused to fetch a file from %s", host or "?")
+        return None
+    try:
+        req = urllib.request.Request(
+            url, headers={"Authorization": f"Bearer {BOT_TOKEN}"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read(files.MAX_FILE_BYTES + 1)
+    except Exception:
+        log.exception("file download failed")
+        return None
+    if len(data) > files.MAX_FILE_BYTES:
+        log.warning("file over the size cap, skipped")
+        return None
+    return data
+
+
+def _doc_block(name: str, data: bytes | None) -> str:
+    """One document as context: its text, clipped, or a line saying why not."""
+    text = files.document_text(data, name) if data is not None else None
+    body = (files.clip_text(text, files.DOC_TEXT_CHARS) if text is not None
+            else f"({files.ext_of(name) or 'file'}: no text could be read)")
+    return f"--- 📎 {name} ---\n{body}"
+
+
+def _documents(msgs: list) -> str:
+    """The documents attached in these messages, read for a run that cannot
+    open them — the newest first, so a long thread keeps the one it is asked
+    about. Images, archives and executables are never fetched."""
+    found = [f for m in reversed(msgs) for f in reversed(m.get("files") or [])
+             if files.classify_inbound(f.get("name") or "",
+                                       f.get("mimetype") or "") == "doc"]
+    blocks = []
+    for f in found[:MAX_CTX_DOCS]:
+        name = f.get("name") or "file"
+        url = f.get("url_private_download") or f.get("url_private")
+        readable = url and files.ext_of(name) not in files.NO_TEXT_READER
+        blocks.append(_doc_block(name, _fetch(url) if readable else None))
+    return "\n\n".join(reversed(blocks))          # → chronological
+
+
+def _local_documents(paths: list[str]) -> str:
+    """Documents a request brought itself (already in the inbox), as context."""
+    blocks = []
+    for p in paths:
+        try:
+            with open(p, "rb") as fh:
+                data = fh.read()
+        except OSError:
+            data = None
+        blocks.append(_doc_block(os.path.basename(p), data))
+    return "\n\n".join(blocks)
+
+
 def _download_attachments(items: list) -> tuple[list[str], list[str]]:
     """Download inbound attachments (owner-only, already classified) into the
     state inbox. Returns (image paths, document paths) for Claude to read."""
@@ -263,18 +333,14 @@ def _download_attachments(items: list) -> tuple[list[str], list[str]]:
         is_image = f.get("kind") == "image"
         dest = ((img_dir if is_image else doc_dir)
                 / files.safe_filename(f.get("name") or "", i))
+        data = _fetch(url)
+        if data is None:
+            continue
         try:
-            req = urllib.request.Request(
-                url, headers={"Authorization": f"Bearer {BOT_TOKEN}"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                data = r.read(files.MAX_FILE_BYTES + 1)
-            if len(data) > files.MAX_FILE_BYTES:
-                log.warning("attachment over the size cap, skipped")
-                continue
             dest.write_bytes(data)
             (imgs if is_image else docs).append(str(dest))
         except Exception:
-            log.exception("attachment download failed")
+            log.exception("attachment save failed")
     return imgs, docs
 
 
@@ -428,6 +494,7 @@ def _handle(job: dict) -> None:
     unguarded = owner_dm and config.OWNER_MODE != "restricted"
     snap = None if unguarded else guard.snapshot()
     try:
+        img_paths, doc_paths = _download_attachments(job.get("attachments") or [])
         if job.get("target_channel"):          # owner's !summary <channel_id>
             context, kind, scope_label = (_channel_context(job["target_channel"]),
                                           "kind_channel",
@@ -443,9 +510,13 @@ def _handle(job: dict) -> None:
                                             n=CHANNEL_CTX_MSGS))
         else:
             context, kind, scope_label = "", "kind_thread", ""
+        if doc_paths and not job.get("in_thread"):
+            # A thread's context reads its own documents; a request that opens
+            # the conversation hands over the ones it brought.
+            docs = _local_documents(doc_paths)
+            context = f"{context}\n\n{docs}" if context else docs
         prompt = build_prompt(context, job["text"], kind, scope_label,
                               session_key=job.get("session_key"))
-        img_paths, doc_paths = _download_attachments(job.get("attachments") or [])
         if doc_paths:
             prompt = t("file_note", n=len(doc_paths),
                        paths="\n".join(f"- {p}" for p in doc_paths)) + prompt

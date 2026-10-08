@@ -10,14 +10,19 @@ that lands outside it. The fence is checked on the *resolved* path, so a
 symlink inside WORK_DIR pointing elsewhere is rejected too.
 
 Both directions are owner-only in the adapters; this module only decides what
-is acceptable, never who is asking.
+is acceptable, never who is asking. (A document already posted in a thread is
+another matter: the adapter reads it as part of that thread, for whoever asks
+there — see :func:`document_text`.)
 """
 from __future__ import annotations
 
 import glob as _glob
+import io
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 from . import config
@@ -254,3 +259,116 @@ def inbox_dir(name: str) -> Path:
     except Exception:
         log.exception("inbox dir create failed: %s", d)
     return d
+
+
+# ─────────────── reading a document for a run that cannot ───────────────
+# A sealed run has no tools: a file it is shown by path is a file it cannot
+# open. Loki reads what has a standard-library reader and hands over the text;
+# the rest is named, not guessed at.
+DOC_TEXT_CHARS = 12000                  # one document's share of a prompt
+NO_TEXT_READER = {"pdf", "doc", "xls", "ppt"}   # would need a parser installed
+_PART_MAX_BYTES = 20 * 1024 * 1024      # one unzipped XML part (zip bombs stop)
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_X = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+
+def document_text(data: bytes, name: str) -> str | None:
+    """A document's text, or None when there is no reader for it here.
+
+    Text is decoded as UTF-16 when it carries that BOM, else UTF-8, else CP949
+    — Korean Windows tools still write logs in it. docx, xlsx and pptx are
+    zipped XML, read with the standard library. pdf and the legacy binary
+    office formats would need a parser this install does not have.
+    """
+    ext = ext_of(name)
+    if ext in NO_TEXT_READER:
+        return None
+    if ext in ("docx", "xlsx", "xlsm", "pptx"):
+        try:
+            return _ooxml_text(data, ext)
+        except Exception:                   # not really a zip, or a part is off
+            return None
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        text = data.decode("utf-16", errors="replace")
+    else:
+        for enc in ("utf-8-sig", "cp949"):
+            try:
+                text = data.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = data.decode("utf-8", errors="replace")
+    return None if "\x00" in text else text      # binary behind a text name
+
+
+def clip_text(text: str, limit: int) -> str:
+    """Keep a long text's start and its end — a log's error is usually last."""
+    if len(text) <= limit:
+        return text
+    head = limit // 3
+    return (f"{text[:head]}\n…[{len(text) - limit} chars omitted]…\n"
+            f"{text[-(limit - head):]}")
+
+
+def _part(z: zipfile.ZipFile, name: str) -> ET.Element:
+    if z.getinfo(name).file_size > _PART_MAX_BYTES:
+        raise ValueError(f"{name} is too large to unzip")
+    return ET.fromstring(z.read(name))
+
+
+def _col(ref: str) -> int:
+    """A cell reference's column: 'C5' → 2."""
+    n = 0
+    for ch in ref:
+        if not ch.isalpha():
+            break
+        n = n * 26 + ord(ch.upper()) - 64
+    return n - 1
+
+
+def _ooxml_text(data: bytes, ext: str) -> str:
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        if ext == "docx":
+            body = _part(z, "word/document.xml")
+            return "\n".join("".join(t.text or "" for t in p.iter(_W + "t"))
+                             for p in body.iter(_W + "p"))
+        if ext == "pptx":
+            slides = sorted((n for n in z.namelist()
+                             if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
+                            key=lambda n: int(re.search(r"(\d+)\.xml$", n).group(1)))
+            return "\n\n".join(
+                f"[slide {i}]\n"
+                + "\n".join(t.text or "" for t in _part(z, n).iter(_A + "t"))
+                for i, n in enumerate(slides, 1))
+        # xlsx / xlsm: each sheet as tab-separated rows, cells in their columns
+        shared = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            shared = ["".join(t.text or "" for t in si.iter(_X + "t"))
+                      for si in _part(z, "xl/sharedStrings.xml").iter(_X + "si")]
+        targets = {r.get("Id"): r.get("Target", "")
+                   for r in _part(z, "xl/_rels/workbook.xml.rels")}
+        sheets = []
+        for sheet in _part(z, "xl/workbook.xml").iter(_X + "sheet"):
+            target = targets.get(sheet.get(_R + "id"), "")
+            path = target.lstrip("/") if target.startswith("/") else "xl/" + target
+            rows = []
+            for row in _part(z, path).iter(_X + "row"):
+                cells: list[str] = []
+                for c in row.iter(_X + "c"):
+                    if c.get("t") == "inlineStr":
+                        value = "".join(t.text or "" for t in c.iter(_X + "t"))
+                    else:
+                        v = c.find(_X + "v")
+                        value = (v.text or "") if v is not None else ""
+                        if c.get("t") == "s" and value:
+                            value = shared[int(value)]
+                    col = _col(c.get("r")) if c.get("r") else len(cells)
+                    cells += [""] * (col + 1 - len(cells))
+                    cells[col] = value
+                rows.append("\t".join(cells))
+            sheets.append(f"[sheet {sheet.get('name')}]\n" + "\n".join(rows))
+        return "\n\n".join(sheets)

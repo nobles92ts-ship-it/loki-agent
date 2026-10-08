@@ -396,6 +396,7 @@ Everything else — the rest of `WORK_DIR`, other drives, `~/.claude` — is den
 - Memory resets after `SESSION_IDLE_MIN` minutes of silence (default 120, `0` = never), or immediately with `!new`. A channel's top level deliberately has none: several people share it, and one person's session must not leak into the next person's answer — Loki reads recent channel history there instead.
 - Invite with `/invite @Loki` — you get a DM heads-up with a one-tap `!block` hint.
 - **Drop a screenshot** in your DM (caption optional) and Loki reads it and analyzes it. If a reply produces a local file (report, chart), Loki attaches it. (owner DMs)
+- **Documents posted in a thread are read** when anyone asks there — logs and other text, docx, xlsx and pptx, the newest four, long ones kept by their start and end. Loki reads them and hands the text over, so this works even in a sealed run. PDF and the old binary office formats are named but not read yet.
 - Replies **render as chat formatting** — on Slack, Claude's Markdown is converted to mrkdwn; Discord renders Markdown natively.
 
 ### The terminal console
