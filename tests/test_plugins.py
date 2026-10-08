@@ -5,6 +5,7 @@ guests a new way to reach the machine.
 """
 import pytest
 
+from conftest import event, install_whoami
 from loki.core import commands, config, orgs, plugins, scope
 
 
@@ -163,3 +164,35 @@ def test_plugins_listing_when_empty(env):
                is_user_id=lambda t: False, is_channel_id=lambda t: False)
     assert "plugins" in commands.handle("!plugins", ctx).lower() or \
         "플러그인" in commands.handle("!plugins", ctx)
+
+
+# ── through the Slack adapter ───────────────────────────────────────────────
+@pytest.fixture
+def slack(adapter, tmp_path, monkeypatch):
+    """Slack adapter with `!whoami` open and granted to acme only."""
+    install_whoami(monkeypatch, tmp_path)
+    monkeypatch.setattr(orgs, "allows_command",
+                        lambda org, cmd: (org, cmd) == ("acme", "whoami"))
+    # this machine's gitignored private hook would run first; CI has none
+    monkeypatch.setattr(adapter, "_private", None)
+    return adapter
+
+
+def test_granted_guest_runs_an_open_plugin_on_slack(slack, monkeypatch):
+    """`OWNER_ONLY = False` + `!org allow acme whoami` must reach a guest."""
+    monkeypatch.setattr(orgs, "resolve",
+                        lambda u, c: "acme" if u == "UGUEST" else None)
+    slack._dispatch({"event_id": "p1"},
+                    event(text="!whoami", user="UGUEST", channel="C0PUB"),
+                    is_mention=True)
+    assert slack.app.client.texts() == ["UGUEST of acme"]
+    assert slack.submitted == []
+
+
+def test_ungranted_org_still_cannot_run_it_on_slack(slack, monkeypatch):
+    monkeypatch.setattr(orgs, "resolve", lambda u, c: "other")
+    slack._dispatch({"event_id": "p2"},
+                    event(text="!whoami", user="UGUEST", channel="C0PUB"),
+                    is_mention=True)
+    assert slack.app.client.texts() == []             # silent: not advertised
+    assert slack.submitted[0]["kind"] == "guest"      # just text to the brain

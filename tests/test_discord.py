@@ -4,16 +4,20 @@ The adapter reads its token at import, so the environment is primed before the
 import below. Channel objects are built with ``object.__new__`` because only
 their type and id matter here — no gateway, no network.
 """
+import asyncio
 import os
+from types import SimpleNamespace
 
 import pytest
+
+from conftest import install_whoami
 
 discord = pytest.importorskip("discord")
 
 os.environ.setdefault("DISCORD_BOT_TOKEN", "test-token-not-real")
 os.environ.setdefault("DISCORD_OWNER_ID", "111111111111111111")
 
-from loki.core import config, sessions                       # noqa: E402
+from loki.core import config, dedup, orgs, sessions          # noqa: E402
 from loki.platforms.discord import adapter                   # noqa: E402
 
 
@@ -142,3 +146,27 @@ def test_resolve_channel_rejects_a_bad_id(monkeypatch):
 def test_session_policy_comes_from_core():
     assert adapter._session_key(DM) == sessions.key_for(
         str(DM.id), None, is_dm=True)
+
+
+# ── plugins ─────────────────────────────────────────────────────────────────
+def test_granted_guest_runs_an_open_plugin(tmp_path, monkeypatch):
+    install_whoami(monkeypatch, tmp_path)
+    monkeypatch.setattr(orgs, "resolve",
+                        lambda u, c: "acme" if u == "222" else None)
+    monkeypatch.setattr(orgs, "allows_command",
+                        lambda o, c: (o, c) == ("acme", "whoami"))
+    monkeypatch.setattr(dedup, "already_seen", lambda _id: False)
+    submitted: list[dict] = []
+    monkeypatch.setattr(adapter.jobs, "submit", submitted.append)
+    sent: list[str] = []
+
+    async def send(text):
+        sent.append(text)
+
+    # a plain stand-in channel: neither DM nor thread, which is what a guild
+    # text channel is to the adapter
+    msg = SimpleNamespace(id=1, content="!whoami", author=SimpleNamespace(id=222),
+                          channel=SimpleNamespace(id=TEXT.id, send=send))
+    asyncio.run(adapter._dispatch(msg, is_mention=True))
+    assert sent == ["222 of acme"]
+    assert submitted == []

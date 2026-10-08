@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+from conftest import install_whoami
+
 OWNER = "123456"
 BOT_ID = "999"
 BOT_NAME = "lokibot"
@@ -221,6 +223,18 @@ def test_guest_cannot_run_commands(tg):
     tg._dispatch(update(f"@{BOT_NAME} !budget off", user="777", chat="-100",
                         chat_type="supergroup"))
     assert tg.submitted[0]["text"] == "!budget off"      # treated as text
+
+
+def test_granted_guest_runs_an_open_plugin(tg, tmp_path, monkeypatch):
+    install_whoami(monkeypatch, tmp_path)
+    monkeypatch.setattr(tg.orgs, "resolve",
+                        lambda u, c: "acme" if u == "777" else None)
+    monkeypatch.setattr(tg.orgs, "allows_command",
+                        lambda o, c: (o, c) == ("acme", "whoami"))
+    tg._dispatch(update(f"@{BOT_NAME} !whoami", user="777", chat="-100",
+                        chat_type="supergroup"))
+    assert tg.sent() == ["777 of acme"]
+    assert tg.submitted == []
 
 
 def test_stop_is_owner_only(tg):

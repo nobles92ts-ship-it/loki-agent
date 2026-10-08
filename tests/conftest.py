@@ -243,3 +243,24 @@ def event(text="hi", user=OWNER, channel="D0OWNER", ts="1.1", **extra) -> dict:
           "channel_type": "im" if channel.startswith("D") else "channel"}
     ev.update(extra)
     return ev
+
+
+def install_whoami(monkeypatch, tmp_path) -> None:
+    """One open plugin, `!whoami` (OWNER_ONLY = False), that answers with the
+    `user` and `org` its ctx carried — what an adapter actually hands plugins.
+
+    The loader's module state is patched rather than reloaded: a reload at
+    teardown would re-scan this folder while it is still patched in, and leave
+    `!whoami` loaded for whichever test runs next."""
+    from loki.core import plugins
+    pdir = tmp_path / "plugins"
+    pdir.mkdir()
+    (pdir / "whoami.py").write_text(
+        'MATCH = r"^!whoami$"\n'
+        'OWNER_ONLY = False\n'
+        'def handle(match, ctx):\n'
+        '    return f"{ctx.get(\'user\')} of {ctx.get(\'org\')}"\n',
+        encoding="utf-8")
+    monkeypatch.setattr(plugins, "plugins_dir", lambda: pdir)
+    monkeypatch.setattr(plugins, "_loaded", [])
+    monkeypatch.setattr(plugins, "_scanned", False)

@@ -445,12 +445,16 @@ def _dispatch(update: dict) -> None:
                 _send(chat_id, reply, thread_id)
             return
 
+    org = None if is_owner else orgs.resolve(user, chat_id)
+
     reply = commands.handle(text, {
         "channel": chat_id,
         "thread": str(thread_id) if thread_id else None,
         "session_key": session_key,
         "is_dm": is_private,
         "is_owner": is_owner,
+        "user": user,
+        "org": org,              # plugins gate on it: `!org allow <org> <name>`
         "name_of": _user_name,
         "user_ids": [],          # Telegram mentions carry @usernames, not ids
         "is_user_id": lambda tk: bool(_NUMERIC_ID_RE.fullmatch(tk)),
@@ -460,8 +464,6 @@ def _dispatch(update: dict) -> None:
     if reply is not None:
         _send(chat_id, reply, thread_id)
         return
-
-    org = None if is_owner else orgs.resolve(user, chat_id)
 
     kind = "owner" if is_owner else "guest"
     reply_prefix = ""

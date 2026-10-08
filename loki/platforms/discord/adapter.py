@@ -467,6 +467,8 @@ async def _dispatch(message: discord.Message, is_mention: bool,
         "session_key": session_key,
         "is_dm": _is_dm(channel),
         "is_owner": is_owner,
+        "user": user,
+        "org": org,            # plugins gate on it: `!org allow <org> <name>`
         "name_of": _user_name,
         "user_ids": [i for i in _USER_MENTION_RE.findall(message.content or "")
                      if i != str(bot.user.id)],

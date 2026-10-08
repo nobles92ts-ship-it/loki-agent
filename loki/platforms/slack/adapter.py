@@ -648,7 +648,8 @@ def _chunks(s: str):
 # The `!` vocabulary itself lives in core.commands, shared with every other
 # platform. Slack only supplies what Slack alone knows: how to resolve a name,
 # and which ids the caller referenced (mention markup and id shapes differ).
-def _cmd_ctx(text: str, event: dict, channel: str, is_owner: bool) -> dict:
+def _cmd_ctx(text: str, event: dict, channel: str, is_owner: bool,
+             user: str | None, org: str | None) -> dict:
     raw = event.get("text") or ""
     return {
         "channel": channel,
@@ -656,6 +657,8 @@ def _cmd_ctx(text: str, event: dict, channel: str, is_owner: bool) -> dict:
         "session_key": _session_key(channel, event.get("thread_ts")),
         "is_dm": str(channel or "").startswith("D"),
         "is_owner": is_owner,
+        "user": user,
+        "org": org,            # plugins gate on it: `!org allow <org> <name>`
         "name_of": _user_name,
         # read from the RAW text: channel mentions are stripped before dispatch
         "user_ids": [i for i in _MENTION_ID_RE.findall(raw) if i != BOT_USER_ID],
@@ -857,7 +860,8 @@ def _dispatch(body, event, is_mention: bool, auto_listen: bool = False,
             return
 
     reply = (None if from_bot
-             else commands.handle(text, _cmd_ctx(text, event, channel, is_owner)))
+             else commands.handle(text, _cmd_ctx(text, event, channel, is_owner,
+                                                 user, org)))
     if reply is not None:
         _post(channel, thread, reply)
         return

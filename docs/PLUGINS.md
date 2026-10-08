@@ -26,8 +26,9 @@ Drop that in, restart, and `!deploy api` works. `!plugins` lists what's loaded.
 | `OWNER_ONLY` | | Defaults to **`True`**. See below before changing it. |
 
 `ctx` is the same dict `core.commands.handle` documents: `channel`, `thread`,
-`session_key`, `is_dm`, `is_owner`, `org`, `name_of`, `user_ids`,
-`is_user_id`, `is_channel_id`.
+`session_key`, `is_dm`, `is_owner`, `user`, `org`, `name_of`, `user_ids`,
+`is_user_id`, `is_channel_id`. `user` is the caller's platform id; `org` is
+their organization, or `None` for the owner and for unaffiliated guests.
 
 Files starting with `_` are treated as shared helpers and never loaded as
 commands, so `_shared.py` next to your plugins is fine.
