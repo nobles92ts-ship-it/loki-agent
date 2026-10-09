@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [v1.12.0] 2026-10-09
+
+A thread's candidate lists can become a poll — Loki builds it from the talk and counts the votes.
 
 ### What you can do now
 
